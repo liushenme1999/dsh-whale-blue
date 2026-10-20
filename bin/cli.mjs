@@ -1,0 +1,305 @@
+#!/usr/bin/env node
+/**
+ * `dsh-whale-blue` — command line companion for the plugin.
+ *
+ *   install   install the Web GUI plugin row and recolor the desktop shell assets
+ *   restore   undo both, from the backups taken by `install`
+ *   status    report what is currently installed
+ *
+ * The Web GUI half only needs a DSH restart. The desktop shell half (tray icon,
+ * window icon, welcome mark) writes into the install directory, so DeepSeek
+ * Harness must be closed while it runs.
+ */
+
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import {
+  defaultDshHome,
+  desktopStatus,
+  patchDesktopAssets,
+  resolveAppDir,
+  restoreDesktopAssets,
+  stateDir,
+} from '../lib/desktop.mjs'
+import { hasPluginRow, installPluginRow, pluginDir, removePluginRow } from '../lib/profile.mjs'
+
+const PACKAGE = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+const PLUGIN_SOURCE = fileURLToPath(new URL('../index.js', import.meta.url))
+const DEFAULT_LIGHT = '#4d6bfe'
+const DEFAULT_DARK = '#7aaaff'
+
+const USAGE = `dsh-whale-blue ${PACKAGE.version} — paint the DeepSeek Harness whale DeepSeek blue
+
+Usage:
+  dsh-whale-blue install [options]   plugin row + tray icon + window icon + welcome mark
+  dsh-whale-blue restore [options]   undo everything (backups are kept until restore)
+  dsh-whale-blue status  [options]   show what is installed
+
+Options:
+  --app-dir <path>    DeepSeek Harness install directory (default: auto-detect)
+  --dsh-home <path>   DSH home (default: $DSH_HOME or ~/.dsh)
+  --profile <name>    DSH profile to configure (default: desktop)
+  --light <color>     light-palette whale color (default: ${DEFAULT_LIGHT})
+  --dark <color>      dark-palette whale color (default: ${DEFAULT_DARK})
+  --no-plugin         skip the Web GUI plugin row
+  --no-desktop        skip the tray icon, window icon and welcome mark
+  --dry-run           report what would change without writing anything
+  -h, --help          show this help
+  -v, --version       print the version
+
+Notes:
+  * Only hex colors (#rgb, #rrggbb) are accepted.
+  * The desktop shell files live inside the install directory: close DeepSeek
+    Harness before running \`install\`, then start it again.
+  * \`restore\` uses the backups under <install>/resources/.dsh-whale-blue.
+`
+
+/**
+ * Parse `--flag value`, `--flag=value`, and boolean flags.
+ * @param {string[]} argv - arguments after the command.
+ * @returns {Record<string, string | boolean>} parsed options.
+ */
+function parseOptions(argv) {
+  const options = {}
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i]
+    if (token === '-h' || token === '--help') options.help = true
+    else if (token === '-v' || token === '--version') options.version = true
+    else if (token === '--dry-run') options.dryRun = true
+    else if (token === '--no-plugin') options.noPlugin = true
+    else if (token === '--no-desktop') options.noDesktop = true
+    else if (token === '--app-dir') options.appDir = argv[++i]
+    else if (token.startsWith('--app-dir=')) options.appDir = token.slice('--app-dir='.length)
+    else if (token === '--dsh-home') options.dshHome = argv[++i]
+    else if (token.startsWith('--dsh-home=')) options.dshHome = token.slice('--dsh-home='.length)
+    else if (token === '--profile') options.profile = argv[++i]
+    else if (token.startsWith('--profile=')) options.profile = token.slice('--profile='.length)
+    else if (token === '--light') options.light = argv[++i]
+    else if (token.startsWith('--light=')) options.light = token.slice('--light='.length)
+    else if (token === '--dark') options.dark = argv[++i]
+    else if (token.startsWith('--dark=')) options.dark = token.slice('--dark='.length)
+    else throw new Error(`unknown argument: ${token}`)
+  }
+  return options
+}
+
+/**
+ * Reject anything that is not a plain hex color.
+ * @param {string | undefined} value - option value.
+ * @param {string} fallback - default color.
+ * @returns {string} a valid color.
+ */
+function color(value, fallback) {
+  if (value === undefined) return fallback
+  if (!/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value)) throw new Error(`not a hex color: ${value}`)
+  return value
+}
+
+/**
+ * Turn parsed options into the settings every command shares.
+ * @param {Record<string, string | boolean>} options - parsed options.
+ * @returns {{ dshHome: string, profile: string, light: string, dark: string, appDir?: string, dryRun: boolean, noPlugin: boolean, noDesktop: boolean }} resolved settings.
+ */
+function settings(options) {
+  return {
+    dshHome: typeof options.dshHome === 'string' ? options.dshHome : defaultDshHome(),
+    profile: typeof options.profile === 'string' ? options.profile : 'desktop',
+    light: color(typeof options.light === 'string' ? options.light : undefined, DEFAULT_LIGHT),
+    dark: color(typeof options.dark === 'string' ? options.dark : undefined, DEFAULT_DARK),
+    appDir: typeof options.appDir === 'string' ? options.appDir : undefined,
+    dryRun: options.dryRun === true,
+    noPlugin: options.noPlugin === true,
+    noDesktop: options.noDesktop === true,
+  }
+}
+
+/**
+ * Install both halves.
+ * @param {ReturnType<typeof settings>} config - resolved settings.
+ * @returns {Promise<number>} process exit code.
+ */
+async function install(config) {
+  console.log(`dsh-whale-blue ${PACKAGE.version}${config.dryRun ? ' (dry run)' : ''}`)
+  console.log(`  profile: ${config.profile}   home: ${config.dshHome}\n`)
+
+  let code = 0
+  if (config.noPlugin) {
+    console.log('Web GUI plugin: skipped (--no-plugin)')
+  } else {
+    console.log('Web GUI plugin')
+    try {
+      installPluginRow({
+        dshHome: config.dshHome,
+        profile: config.profile,
+        source: PLUGIN_SOURCE,
+        light: config.light,
+        dark: config.dark,
+        dryRun: config.dryRun,
+        log: (line) => console.log(line),
+      })
+      console.log('  -> restart DeepSeek Harness to load it\n')
+    } catch (error) {
+      console.error(`  failed: ${error instanceof Error ? error.message : String(error)}\n`)
+      code = 1
+    }
+  }
+
+  if (config.noDesktop) {
+    console.log('Desktop shell: skipped (--no-desktop)')
+    return code
+  }
+
+  console.log('Desktop shell (tray icon, window icon, welcome mark)')
+  let appDir
+  try {
+    appDir = resolveAppDir(config.appDir)
+  } catch (error) {
+    console.log(`  skipped: ${error instanceof Error ? error.message : String(error)}`)
+    console.log('  (the Web GUI half does not need the desktop app)\n')
+    return code
+  }
+  console.log(`  install: ${appDir}`)
+  const result = patchDesktopAssets({
+    appDir,
+    color: config.light,
+    dryRun: config.dryRun,
+    log: (line) => console.log(line),
+  })
+
+  if (result.welcome === 'failed') {
+    code = code === 0 ? 2 : code
+    console.log('\nThe tray and window icons are patched. The welcome mark needs the app closed:')
+    console.log('  1. quit DeepSeek Harness completely (tray icon -> Quit)')
+    console.log('  2. run this command again')
+    console.log('  3. start DeepSeek Harness')
+    console.log(`  backups: ${join(stateDir(appDir), 'backup')}`)
+  } else {
+    console.log('\nDone. Start DeepSeek Harness to see the blue whale.')
+  }
+  return code
+}
+
+/**
+ * Undo both halves.
+ * @param {ReturnType<typeof settings>} config - resolved settings.
+ * @returns {Promise<number>} process exit code.
+ */
+async function restore(config) {
+  console.log(`dsh-whale-blue ${PACKAGE.version}${config.dryRun ? ' (dry run)' : ''}\n`)
+
+  console.log('Web GUI plugin')
+  const removed = removePluginRow({
+    dshHome: config.dshHome,
+    profile: config.profile,
+    dryRun: config.dryRun,
+    log: (line) => console.log(line),
+  })
+  if (!removed) console.log('  nothing to remove')
+
+  if (config.noDesktop) {
+    console.log('\nDesktop shell: skipped (--no-desktop)')
+    return 0
+  }
+
+  console.log('\nDesktop shell')
+  let appDir
+  try {
+    appDir = resolveAppDir(config.appDir)
+  } catch (error) {
+    console.log(`  skipped: ${error instanceof Error ? error.message : String(error)}`)
+    return 0
+  }
+  const status = desktopStatus(appDir)
+  if (!status.installed && !status.hasBackup) {
+    console.log('  nothing to restore')
+    return 0
+  }
+  try {
+    restoreDesktopAssets({ appDir, log: (line) => console.log(line) })
+    console.log('\nRestored. Restart DeepSeek Harness.')
+    return 0
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    console.log(`  failed: ${message}`)
+    console.log('  quit DeepSeek Harness completely and run `dsh-whale-blue restore` again')
+    return 2
+  }
+}
+
+/**
+ * Report the current installation.
+ * @param {ReturnType<typeof settings>} config - resolved settings.
+ * @returns {Promise<number>} process exit code.
+ */
+async function status(config) {
+  console.log(`dsh-whale-blue ${PACKAGE.version}\n`)
+  const row = hasPluginRow(config.dshHome, config.profile)
+  console.log('Web GUI plugin')
+  console.log(`  profile:  ${config.profile}`)
+  console.log(`  row:      ${row ? 'installed' : 'not installed'}`)
+  console.log(`  module:   ${join(pluginDir(config.dshHome, config.profile), 'index.mjs')}`)
+
+  console.log('\nDesktop shell')
+  let appDir
+  try {
+    appDir = resolveAppDir(config.appDir)
+  } catch (error) {
+    console.log(`  skipped: ${error instanceof Error ? error.message : String(error)}`)
+    return 0
+  }
+  const desktop = desktopStatus(appDir)
+  console.log(`  install:  ${appDir}`)
+  if (!desktop.installed) {
+    console.log('  assets:   untouched')
+    return 0
+  }
+  console.log(`  color:    ${desktop.state.color}`)
+  console.log(`  icons:    ${(desktop.state.icons ?? []).join(', ') || 'none'}`)
+  console.log(`  welcome:  ${desktop.state.welcome}`)
+  console.log(`  patched:  ${desktop.state.patchedAt}`)
+  return 0
+}
+
+async function main() {
+  const [command, ...rest] = process.argv.slice(2)
+  let options
+  try {
+    options = parseOptions(rest)
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    console.error('\n' + USAGE)
+    return 1
+  }
+  if (options.help === true || command === undefined) {
+    console.log(USAGE)
+    return options.help === true ? 0 : 1
+  }
+  if (options.version === true) {
+    console.log(PACKAGE.version)
+    return 0
+  }
+
+  let config
+  try {
+    config = settings(options)
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error))
+    return 1
+  }
+
+  switch (command) {
+    case 'install':
+      return install(config)
+    case 'restore':
+      return restore(config)
+    case 'status':
+      return status(config)
+    default:
+      console.error(`unknown command: ${command}\n`)
+      console.log(USAGE)
+      return 1
+  }
+}
+
+process.exitCode = await main()

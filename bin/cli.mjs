@@ -13,6 +13,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   defaultDshHome,
@@ -22,10 +23,10 @@ import {
   restoreDesktopAssets,
   stateDir,
 } from '../lib/desktop.mjs'
-import { hasPluginRow, installPluginRow, pluginDir, removePluginRow } from '../lib/profile.mjs'
+import { installPluginRow, pluginDir, readPluginRow, removePluginRow } from '../lib/profile.mjs'
 
 const PACKAGE = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-const PLUGIN_SOURCE = fileURLToPath(new URL('../index.js', import.meta.url))
+const PACKAGE_DIR = dirname(fileURLToPath(new URL('../index.js', import.meta.url)))
 const DEFAULT_LIGHT = '#4d6bfe'
 const DEFAULT_DARK = '#7aaaff'
 
@@ -43,6 +44,7 @@ Options:
   --light <color>     light-palette whale color (default: ${DEFAULT_LIGHT})
   --dark <color>      dark-palette whale color (default: ${DEFAULT_DARK})
   --no-plugin         skip the Web GUI plugin row
+  --no-ui             keep the plugin but hide the in-page panel
   --no-desktop        skip the tray icon, window icon and welcome mark
   --dry-run           report what would change without writing anything
   -h, --help          show this help
@@ -68,6 +70,7 @@ function parseOptions(argv) {
     else if (token === '-v' || token === '--version') options.version = true
     else if (token === '--dry-run') options.dryRun = true
     else if (token === '--no-plugin') options.noPlugin = true
+    else if (token === '--no-ui') options.noUi = true
     else if (token === '--no-desktop') options.noDesktop = true
     else if (token === '--app-dir') options.appDir = argv[++i]
     else if (token.startsWith('--app-dir=')) options.appDir = token.slice('--app-dir='.length)
@@ -110,6 +113,7 @@ function settings(options) {
     appDir: typeof options.appDir === 'string' ? options.appDir : undefined,
     dryRun: options.dryRun === true,
     noPlugin: options.noPlugin === true,
+    noUi: options.noUi === true,
     noDesktop: options.noDesktop === true,
   }
 }
@@ -124,6 +128,42 @@ async function install(config) {
   console.log(`  profile: ${config.profile}   home: ${config.dshHome}\n`)
 
   let code = 0
+  let desktopPatched = false
+
+  if (config.noDesktop) {
+    console.log('Desktop shell: skipped (--no-desktop)\n')
+  } else {
+    console.log('Desktop shell (tray icon, window icon, welcome mark)')
+    let appDir
+    try {
+      appDir = resolveAppDir(config.appDir)
+    } catch (error) {
+      console.log(`  skipped: ${error instanceof Error ? error.message : String(error)}`)
+      console.log('  (the Web GUI half does not need the desktop app)\n')
+      appDir = undefined
+    }
+    if (appDir !== undefined) {
+      console.log(`  install: ${appDir}`)
+      const result = patchDesktopAssets({
+        appDir,
+        color: config.light,
+        dryRun: config.dryRun,
+        log: (line) => console.log(line),
+      })
+      desktopPatched = result.welcome !== 'failed'
+      if (result.welcome === 'failed') {
+        code = 2
+        console.log('\n  The tray and window icons are patched. The welcome mark needs the app closed:')
+        console.log('  1. quit DeepSeek Harness completely (tray icon -> Quit)')
+        console.log('  2. run this command again')
+        console.log('  3. start DeepSeek Harness')
+        console.log(`  backups: ${join(stateDir(appDir), 'backup')}\n`)
+      } else {
+        console.log('  done\n')
+      }
+    }
+  }
+
   if (config.noPlugin) {
     console.log('Web GUI plugin: skipped (--no-plugin)')
   } else {
@@ -132,51 +172,23 @@ async function install(config) {
       installPluginRow({
         dshHome: config.dshHome,
         profile: config.profile,
-        source: PLUGIN_SOURCE,
+        packageDir: PACKAGE_DIR,
         light: config.light,
         dark: config.dark,
+        desktop: desktopPatched,
+        ui: !config.noUi,
         dryRun: config.dryRun,
         log: (line) => console.log(line),
       })
-      console.log('  -> restart DeepSeek Harness to load it\n')
+      console.log('  -> restart DeepSeek Harness to load it')
+      console.log('  -> then use the whale button in the bottom-right corner to change it\n')
     } catch (error) {
       console.error(`  failed: ${error instanceof Error ? error.message : String(error)}\n`)
-      code = 1
+      code = code === 0 ? 1 : code
     }
   }
 
-  if (config.noDesktop) {
-    console.log('Desktop shell: skipped (--no-desktop)')
-    return code
-  }
-
-  console.log('Desktop shell (tray icon, window icon, welcome mark)')
-  let appDir
-  try {
-    appDir = resolveAppDir(config.appDir)
-  } catch (error) {
-    console.log(`  skipped: ${error instanceof Error ? error.message : String(error)}`)
-    console.log('  (the Web GUI half does not need the desktop app)\n')
-    return code
-  }
-  console.log(`  install: ${appDir}`)
-  const result = patchDesktopAssets({
-    appDir,
-    color: config.light,
-    dryRun: config.dryRun,
-    log: (line) => console.log(line),
-  })
-
-  if (result.welcome === 'failed') {
-    code = code === 0 ? 2 : code
-    console.log('\nThe tray and window icons are patched. The welcome mark needs the app closed:')
-    console.log('  1. quit DeepSeek Harness completely (tray icon -> Quit)')
-    console.log('  2. run this command again')
-    console.log('  3. start DeepSeek Harness')
-    console.log(`  backups: ${join(stateDir(appDir), 'backup')}`)
-  } else {
-    console.log('\nDone. Start DeepSeek Harness to see the blue whale.')
-  }
+  if (code === 0 && desktopPatched) console.log('Done. Start DeepSeek Harness to see the blue whale.')
   return code
 }
 
@@ -234,11 +246,17 @@ async function restore(config) {
  */
 async function status(config) {
   console.log(`dsh-whale-blue ${PACKAGE.version}\n`)
-  const row = hasPluginRow(config.dshHome, config.profile)
+  const row = readPluginRow(config.dshHome, config.profile)
   console.log('Web GUI plugin')
   console.log(`  profile:  ${config.profile}`)
-  console.log(`  row:      ${row ? 'installed' : 'not installed'}`)
+  console.log(`  row:      ${row === null ? 'not installed' : 'installed'}`)
   console.log(`  module:   ${join(pluginDir(config.dshHome, config.profile), 'index.mjs')}`)
+  if (row !== null) {
+    console.log(`  colors:   light ${row.light ?? '(default)'}   dark ${row.dark ?? '(default)'}`)
+    console.log(`  whale:    ${row.enabled === false ? 'default black' : 'recolored'}`)
+    console.log(`  panel:    ${row.ui === false ? 'hidden' : 'visible (bottom-right whale button)'}`)
+    console.log(`  desktop:  ${row.desktop === true ? 'synced' : 'not synced'}`)
+  }
 
   console.log('\nDesktop shell')
   let appDir

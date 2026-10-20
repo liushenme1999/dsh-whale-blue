@@ -7,7 +7,8 @@ import { readAsarFile, replaceAsarFile } from '../lib/asar.mjs'
 import { paintWelcomeMark } from '../lib/desktop.mjs'
 import { decodeIco, encodeIco, transformIco } from '../lib/ico.mjs'
 import { decodePng, encodePng } from '../lib/png.mjs'
-import { hasPluginRow, installPluginRow, pluginDir, removePluginRow } from '../lib/profile.mjs'
+import { hasPluginRow, installPluginRow, pluginDir, readPluginRow, removePluginRow } from '../lib/profile.mjs'
+import { readRowBlock, replaceRowBlock, stripRowBlock } from '../lib/row.mjs'
 import { parseColor, recolorRgba } from '../lib/recolor.mjs'
 
 /** @returns {Buffer} a small deterministic RGBA image. */
@@ -114,6 +115,28 @@ test('asar entries can be read and replaced in place, and length changes are rej
   }
 })
 
+test('managed row round trips, keeps user rows, and never duplicates itself', () => {
+  const initial = '- id: keep\n  name: "keep"\n'
+  const values = { name: 'file:///C:/x/index.mjs', light: '#4d6bfe', dark: '#7aaaff', enabled: true, desktop: false, ui: true }
+  const once = replaceRowBlock(initial, values)
+  assert.match(once, /- id: keep/)
+  assert.equal((once.match(/dsh-whale-blue:start/g) ?? []).length, 1)
+
+  const twice = replaceRowBlock(once, { ...values, enabled: false, light: '#0000ff' })
+  assert.equal((twice.match(/dsh-whale-blue:start/g) ?? []).length, 1, 'a second write replaces the block')
+  assert.match(twice, /- id: keep/)
+
+  const parsed = readRowBlock(twice)
+  assert.equal(parsed.enabled, false)
+  assert.equal(parsed.light, '#0000ff')
+  assert.equal(parsed.ui, true)
+  assert.equal(readRowBlock(initial), null)
+
+  const stripped = stripRowBlock(twice)
+  assert.match(stripped, /- id: keep/)
+  assert.doesNotMatch(stripped, /whale-blue/)
+})
+
 test('profile row is installed idempotently and removed cleanly', () => {
   const dir = mkdtempSync(join(tmpdir(), 'whale-profile-'))
   try {
@@ -122,19 +145,25 @@ test('profile row is installed idempotently and removed cleanly', () => {
     mkdirSync(join(home, 'profiles', profile), { recursive: true })
     writeFileSync(join(home, 'profiles', profile, 'package.json'), '{"name":"profile"}\n')
     writeFileSync(join(home, 'profiles', profile, 'cordis.patch.yml'), '- id: keep\n  name: "keep"\n')
-    const source = join(dir, 'index.js')
-    writeFileSync(source, 'export function apply() {}\n')
+
+    const pkg = join(dir, 'pkg')
+    mkdirSync(join(pkg, 'lib'), { recursive: true })
+    writeFileSync(join(pkg, 'index.js'), 'export function apply() {}\n')
+    writeFileSync(join(pkg, 'package.json'), '{"name":"dsh-whale-blue","version":"1.1.0"}\n')
+    writeFileSync(join(pkg, 'lib', 'ui.js'), 'console.log("panel")\n')
 
     const log = () => {}
-    installPluginRow({ dshHome: home, profile, source, light: '#4d6bfe', dark: '#7aaaff', log })
-    installPluginRow({ dshHome: home, profile, source, light: '#4d6bfe', dark: '#7aaaff', log })
+    installPluginRow({ dshHome: home, profile, packageDir: pkg, light: '#4d6bfe', dark: '#7aaaff', log })
+    installPluginRow({ dshHome: home, profile, packageDir: pkg, light: '#4d6bfe', dark: '#7aaaff', log })
 
     const patch = readFileSync(join(home, 'profiles', profile, 'cordis.patch.yml'), 'utf8')
     assert.equal((patch.match(/dsh-whale-blue:start/g) ?? []).length, 1, 'installing twice keeps one block')
     assert.match(patch, /- id: keep/, 'the user rows survive')
     assert.match(patch, /light: "#4d6bfe"/)
     assert.ok(hasPluginRow(home, profile))
+    assert.equal(readPluginRow(home, profile).desktop, false)
     assert.ok(readFileSync(join(pluginDir(home, profile), 'index.mjs'), 'utf8').includes('apply'))
+    assert.ok(readFileSync(join(pluginDir(home, profile), 'lib', 'ui.js'), 'utf8').includes('panel'))
 
     removePluginRow({ dshHome: home, profile, log })
     assert.equal(hasPluginRow(home, profile), false)

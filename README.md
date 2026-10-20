@@ -4,6 +4,8 @@
 
 聊天界面的品牌标志、系统托盘图标、窗口 / 关于面板图标、首次启动的欢迎页——一次性全部换掉，随时可以逐字节还原。
 
+装完之后页面右下角会多一个鲸鱼小按钮，点开就是配置面板：**一键换蓝、一键还原**，也能自己调亮色 / 暗色两个颜色。
+
 > 非官方项目。鲸鱼标志的版权归 DeepSeek 所有，本项目只是重新上色。
 
 ![改前](docs/gui-before.png)
@@ -20,6 +22,7 @@
 | 系统托盘 / 通知区域图标 | `install` 重给 `resources/tray.ico` 上色 | ✅ |
 | 窗口图标、关于面板、退出确认框 | `install` 重给 `resources/icon.png` 上色 | ✅ |
 | 首次启动 / 登录欢迎页的品牌标志 | `install` 原地改写 `app.asar` 里的 `welcome-brand.svg` | ✅（只有鲸鱼，文字保持原色） |
+| 页面右下角的配色面板 | 注入一段 `<script>` + 本地 `/dsh-whale-blue/state` 接口 | — |
 | Windows 任务栏按钮图标 | 由 exe 内的图标资源决定，不改 exe 就改不了 | ❌ |
 
 ![欢迎页](docs/welcome-mark.png)
@@ -89,6 +92,23 @@ node bin/cli.mjs install --no-desktop
 
 ---
 
+## 页面里的配置面板
+
+重启 DSH 之后，页面右下角会多一个鲸鱼小按钮。点开就是全部设置：
+
+| 亮色 | 暗色 |
+| --- | --- |
+| ![亮色面板](docs/panel-light.png) | ![暗色面板](docs/panel-dark.png) |
+
+- **蓝色 / 默认**：一键切换，网页立即变，不用刷新。
+- **亮色 / 暗色**：直接改颜色（`#rgb` 或 `#rrggbb`），改完网页同样立即生效。
+- **同步托盘图标和欢迎页图标**：勾上会立刻改写安装目录里的图标和 `app.asar`；图标与欢迎页是 DSH 启动时读的，**重启 DSH 后**才看得到。
+- **恢复默认**：颜色回蓝、取消同步，等于把两半一起还原。
+
+每个选择都会写回 profile 的 `cordis.patch.yml`（就是下面那个标记块），所以下次启动还是你选的样子。不想要面板就 `install --no-ui`，或者把行里的 `ui:` 改成 `false`。
+
+---
+
 ## 命令
 
 ```
@@ -102,6 +122,7 @@ dsh-whale-blue status  [options]   看看现在是什么状态
 --light <color>      亮色下的鲸鱼颜色（默认 #4d6bfe）
 --dark <color>       暗色下的鲸鱼颜色（默认 #7aaaff）
 --no-plugin          跳过网页插件
+--no-ui              装插件但不要右下角的面板
 --no-desktop         跳过托盘/窗口图标/欢迎页
 --dry-run            只报告，不写任何文件
 ```
@@ -118,6 +139,8 @@ restore.cmd        # 或 node bin/cli.mjs restore
 
 ## 自定义颜色
 
+最省事的方式是点面板里的颜色框，改完点一下面板外面就行。等价于命令行：
+
 ```powershell
 node bin/cli.mjs install --light "#5b8cff" --dark "#9dc0ff"
 ```
@@ -125,13 +148,16 @@ node bin/cli.mjs install --light "#5b8cff" --dark "#9dc0ff"
 颜色最终写在 profile 的 `cordis.patch.yml` 里，随时可以改：
 
 ```yaml
-# dsh-whale-blue:start — managed by `dsh-whale-blue install`; `dsh-whale-blue restore` removes it
+# dsh-whale-blue:start — managed by dsh-whale-blue; remove this block to uninstall
 - insert:
     - id: whale-blue
       name: "file:///C:/Users/you/.dsh/profiles/desktop/local/whale-blue/index.mjs"
       config:
         light: "#4d6bfe"
         dark: "#7aaaff"
+        enabled: true      # false = 保持默认黑色
+        desktop: true      # 托盘 / 欢迎页是否同步
+        ui: true           # false = 不注入右下角面板
 # dsh-whale-blue:end
 ```
 
@@ -176,6 +202,17 @@ body[data-ds-dark-theme] svg[viewBox="0 0 23.16 17.04"] path { fill: #7aaaff }
 
 `replaceAsarFile()` 会强制校验"替换后长度必须一致"，不一致就报错退出，不会把归档写坏。
 
+### 配置面板
+
+面板不是前端打包产物，就是一段注入到 `index.html` 里的普通 `<script>`：
+
+- `ctx.on('webserver/index-inject', table => table.push({ kind: 'script', text }))`——官方给插件留的注入口，和那条 CSS 在同一个位置，`kind: 'style'` / `kind: 'script'` 随你放；
+- 面板用 shadow DOM 渲染，自己的样式锁在里面不外泄；`--dsw-alias-*` 这些设计变量能穿过 shadow 边界，所以亮暗两套配色自动跟着 DSH 走，不需要自己判断主题；
+- 状态走 `/dsh-whale-blue/state`（`ctx.webServer.register`）：GET 取当前值，POST 改。POST 要求一个自定义头 `x-dsh-whale-blue: 1`，别的网页没法用跨站表单替你改设置——那会先触发预检，而预检没人应答；
+- 改完写回 `cordis.patch.yml` 的标记块，下次启动读到的就是它。
+
+有个 Electron 的坑要绕：桌面外壳里 `node:fs` 被 asar 层接管，`open('app.asar', 'r+')` 会被理解成"打开 asar 里的某个文件"，直接 `ENOENT,  not found in …app.asar`。所以 `lib/asar.mjs` 检测到 `process.versions.electron` 时改用 `original-fs`（Electron 提供的、绕过 asar 层的原始 fs）。这样面板在**运行中的** DSH 里点一下"同步"，也能把欢迎页写进去。
+
 ### 备份与还原
 
 ```
@@ -197,6 +234,12 @@ body[data-ds-dark-theme] svg[viewBox="0 0 23.16 17.04"] path { fill: #7aaaff }
 **改完还是黑的？**
 插件行是启动时读的，必须重启 DSH。托盘图标同样是启动时加载的。浏览器里的话刷新页面即可。
 
+**右下角没有鲸鱼按钮？**
+同上，装完要重启 DSH（`dsh web` 的话刷新页面）。另外看下行里有没有 `ui: false`——写了就不注入面板。
+
+**勾了"同步托盘"但欢迎页没变？**
+图标和欢迎页都是 DSH 启动时读的，重启一次才生效。万一 `app.asar` 正被占用写不进去，面板底部会提示你，退出 DSH 后跑一次 `restore.cmd` + `install.cmd` 就能补上。
+
 **欢迎页没变？**
 说明当时 `app.asar` 被占用，`install` 的输出里会有 `skipped`。完全退出 DSH 再跑一次 `install`。
 
@@ -217,16 +260,19 @@ body[data-ds-dark-theme] svg[viewBox="0 0 23.16 17.04"] path { fill: #7aaaff }
 node --test test/lib.test.mjs
 ```
 
-测试覆盖：PNG 编解码往返、去色映射、欢迎页改写（长度不变、只改鲸鱼、失败时报错）、ICO 多帧、以及 asar 原地读写（包括"长度不一致必须拒绝"）。
+测试覆盖：PNG 编解码往返、去色映射、欢迎页改写（长度不变、只改鲸鱼、失败时报错）、ICO 多帧、asar 原地读写（包括"长度不一致必须拒绝"）、标记块反复写入只留一份且不碰用户自己的行、以及插件安装/卸载。
 
 目录：
 
 ```
-index.js           Cordis 插件（网页界面；装进 profile 时改名为 index.mjs）
+index.js           Cordis 插件（网页界面 + /dsh-whale-blue/state 接口；装进 profile 时改名为 index.mjs）
+lib/ui.js          注入到页面里的配置面板（原生 DOM + shadow root，无构建步骤）
+lib/css.mjs        那条鲸鱼样式表
+lib/row.mjs        cordis.patch.yml 里那个标记块的读写
 bin/cli.mjs        命令行：install / restore / status
 lib/desktop.mjs    桌面外壳补丁（图标、欢迎页、备份、状态）
-lib/profile.mjs    profile 插件行的安装与卸载
-lib/asar.mjs       asar 头部解析 + 原地改写
+lib/profile.mjs    profile 插件包的安装与卸载
+lib/asar.mjs       asar 头部解析 + 原地改写（Electron 里走 original-fs）
 lib/png.mjs        8 位 PNG 编解码
 lib/ico.mjs        ICO 容器（PNG 帧）
 lib/recolor.mjs    像素重新上色

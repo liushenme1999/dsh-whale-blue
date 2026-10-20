@@ -18,11 +18,11 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { COLOR, DEFAULT_DARK, DEFAULT_LIGHT, normalizeColor, whaleCss } from './lib/css.mjs'
 import { desktopStatus, patchDesktopAssets, resolveAppDir, restoreDesktopAssets } from './lib/desktop.mjs'
-import { replaceRowBlock } from './lib/row.mjs'
+import { locatePatchFile, replaceRowBlock } from './lib/row.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const MODULE_URL = import.meta.url
@@ -59,21 +59,16 @@ function normalize(raw) {
 
 /**
  * Where this plugin records its state: an explicit `patchFile`, otherwise the
- * profile's own patch list.
- *
- * The environment variable is the normal answer, but a host started from a
- * different shell does not always export it, and a panel whose settings vanish
- * on restart is worse than no panel. So the installed layout
- * (`<profile>/local/whale-blue/index.mjs`) is the fallback.
+ * profile's own patch list (see `locatePatchFile`).
  * @param {any} raw - the row's `config`.
  * @returns {string | null} absolute path, or null when it cannot be known.
  */
 function resolvePatchFile(raw) {
-  if (typeof raw?.patchFile === 'string' && raw.patchFile !== '') return raw.patchFile
-  const profile = process.env.DSH_PROFILE_DIR
-  if (profile !== undefined && profile !== '') return join(profile, 'cordis.patch.yml')
-  const guessed = resolve(HERE, '..', '..', 'cordis.patch.yml')
-  return existsSync(guessed) ? guessed : null
+  return locatePatchFile({
+    patchFile: raw?.patchFile,
+    profileDir: process.env.DSH_PROFILE_DIR,
+    here: HERE,
+  })
 }
 
 /**

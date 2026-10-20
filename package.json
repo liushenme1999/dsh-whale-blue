@@ -1,6 +1,6 @@
 {
   "name": "dsh-whale-blue",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Paint the DeepSeek Harness whale DeepSeek blue — a Cordis plugin with an in-page palette panel, plus a companion patcher for the desktop tray icon, window icon and welcome mark.",
   "type": "module",
   "exports": "./index.js",

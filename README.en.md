@@ -96,6 +96,7 @@ Backups live in `<install>\resources\.dsh-whale-blue\`. After a DSH update the t
 - Still black after installing? The plugin row is read at startup — restart DSH (a browser tab only needs a refresh).
 - No whale button? Same reason, plus check that the row does not say `ui: false`.
 - Synced the tray but the welcome page is unchanged? Both are read at startup; restart DSH. If `app.asar` was busy, the panel says so — quit DSH and run `restore.cmd` + `install.cmd`.
+- A panel change that comes back after a restart means it could not be written to `cordis.patch.yml`: the panel shows that in red, and `node bin/cli.mjs status` prints what the file records.
 - The Windows taskbar button icon is baked into the exe; changing it would break code signing, so it is out of scope.
 - `dsh web` / browser use: the plugin half works everywhere (`--no-desktop`).
 - The asar integrity fuse is disabled in the desktop build, and the file length never changes.

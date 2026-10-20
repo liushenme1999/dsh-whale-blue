@@ -240,6 +240,9 @@ body[data-ds-dark-theme] svg[viewBox="0 0 23.16 17.04"] path { fill: #7aaaff }
 **勾了"同步托盘"但欢迎页没变？**
 图标和欢迎页都是 DSH 启动时读的，重启一次才生效。万一 `app.asar` 正被占用写不进去，面板底部会提示你，退出 DSH 后跑一次 `restore.cmd` + `install.cmd` 就能补上。
 
+**面板里改完，重启又变回去了？**
+面板的每个选择都写进 profile 的 `cordis.patch.yml`，重启读的就是它。万一写不进去（权限、路径），面板底部会出红字，`node bin/cli.mjs status` 也会显示文件里到底记了什么。
+
 **欢迎页没变？**
 说明当时 `app.asar` 被占用，`install` 的输出里会有 `skipped`。完全退出 DSH 再跑一次 `install`。
 

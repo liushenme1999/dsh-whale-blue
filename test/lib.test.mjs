@@ -8,7 +8,7 @@ import { paintWelcomeMark } from '../lib/desktop.mjs'
 import { decodeIco, encodeIco, transformIco } from '../lib/ico.mjs'
 import { decodePng, encodePng } from '../lib/png.mjs'
 import { hasPluginRow, installPluginRow, pluginDir, readPluginRow, removePluginRow } from '../lib/profile.mjs'
-import { readRowBlock, replaceRowBlock, stripRowBlock } from '../lib/row.mjs'
+import { locatePatchFile, readRowBlock, replaceRowBlock, stripRowBlock } from '../lib/row.mjs'
 import { parseColor, recolorRgba } from '../lib/recolor.mjs'
 
 /** @returns {Buffer} a small deterministic RGBA image. */
@@ -135,6 +135,25 @@ test('managed row round trips, keeps user rows, and never duplicates itself', ()
   const stripped = stripRowBlock(twice)
   assert.match(stripped, /- id: keep/)
   assert.doesNotMatch(stripped, /whale-blue/)
+})
+
+test('patch file is located from the config, the profile env, or the installed layout', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'whale-locate-'))
+  try {
+    const profile = join(dir, 'profiles', 'desktop')
+    const here = join(profile, 'local', 'whale-blue')
+    mkdirSync(here, { recursive: true })
+    const patch = join(profile, 'cordis.patch.yml')
+    writeFileSync(patch, '- id: keep\n')
+
+    assert.equal(locatePatchFile({ patchFile: 'D:/x/cordis.patch.yml' }), 'D:/x/cordis.patch.yml')
+    assert.equal(locatePatchFile({ patchFile: 'D:/x/cordis.patch.yml', profileDir: profile }), 'D:/x/cordis.patch.yml')
+    assert.equal(locatePatchFile({ profileDir: profile, here }), patch)
+    assert.equal(locatePatchFile({ here }), patch, 'a host that exports no profile dir still finds the profile')
+    assert.equal(locatePatchFile({ here: join(dir, 'elsewhere') }), null, 'nothing to guess from')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 test('profile row is installed idempotently and removed cleanly', () => {

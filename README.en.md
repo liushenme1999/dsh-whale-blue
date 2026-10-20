@@ -43,11 +43,15 @@ Requires Windows DSH desktop (verified on `0.2.1-rc.2`). **Installing from the P
    https://github.com/liushenme1999/dsh-whale-blue
    ```
 
-3. **安装**. Closing the dialog afterwards is enough — the new bundle is already selected — or click **立即启用** to scroll to its card.
-4. Restart DSH (or press `Ctrl+R`).
+3. **安装**, then click **立即启用** on the result screen.
+
+   > Closing the dialog also installs it, but the bundle stays **off**. Go to **已安装插件**, find 蓝色鲸鱼 and switch it on (the same switch is on its detail page).
+4. Restart DSH. `Ctrl+R` only reloads the page: the plugin row is composed when the host starts, so the first time needs a full restart.
 5. Open **Settings → 通用设置**: 鲸鱼配色 sits under 外观.
 
 That installs a **bundle**: `dsh.bundle.patch` in `package.json` points at `cordis.patch.yml`, which inserts the plugin row. Your choices are not written back into the package — they go into the profile's own `cordis.patch.yml` as an id-targeted override, so **upgrading or reinstalling the bundle keeps your colors**.
+
+To confirm it took: `dsh.profile.bundles` in `~/.dsh/profiles/desktop/package.json` should list `dsh-whale-blue`. If only `dependencies` has it, the bundle is installed but not enabled.
 
 This installs from GitHub, not from npm, so no registry mirror is involved. Behind a network that cannot reach GitHub the dialog reports 无法访问 GitHub / 连接 GitHub 超时; use option 2 there.
 
@@ -147,7 +151,8 @@ Tray syncing self-checks at startup for the same reason: a bundle install has no
 
 - Still black after installing? The plugin row is read at startup — restart DSH (a browser tab only needs a refresh).
 - No "鲸鱼配色" item? Same reason, plus check that the row does not say `ui: false`. It lives in Settings → 通用设置, under 外观.
-- Installed from the Plugins page but the plugin is not listed? A new bundle is selected by default, but its row only loads after a **restart**. If the card is there but off, switch it on; if the card is missing, `pnpm add` failed — reinstall and read **查看安装详情**.
+- Installed from the Plugins page but there is no "鲸鱼配色" item? First check that the bundle is **on**: Plugins → **已安装插件** → the 蓝色鲸鱼 switch. Closing the install dialog leaves it installed but **off**, its patch layer never applies, and the row is never inserted (`dependencies` lists it, `dsh.profile.bundles` does not). Switch it on, then restart DSH.
+- No card in the list at all? `pnpm add` failed — reinstall and read **查看安装详情**.
 - The dialog says 无法访问 GitHub / 连接 GitHub 超时? It probes the repository with `git ls-remote` before installing. Change network, or use the command line (clone and `install.cmd`).
 - Synced the tray but the welcome page is unchanged? Both are read at startup; restart DSH. If `app.asar` was busy the settings item says so: a bundle install retries on the next start, a CLI install needs `restore.cmd` + `install.cmd`.
 - A settings change that comes back after a restart means it could not be written to `cordis.patch.yml`: the item shows that in red, and `node bin/cli.mjs status` prints what the file records.

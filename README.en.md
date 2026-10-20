@@ -43,7 +43,7 @@ Requires Windows DSH desktop (verified on `0.2.1-rc.2`). **Installing from the P
    https://github.com/liushenme1999/dsh-whale-blue
    ```
 
-3. **安装**, then **立即启用** (a freshly installed bundle is already selected).
+3. **安装**. Closing the dialog afterwards is enough — the new bundle is already selected — or click **立即启用** to scroll to its card.
 4. Restart DSH (or press `Ctrl+R`).
 5. Open **Settings → 通用设置**: 鲸鱼配色 sits under 外观.
 

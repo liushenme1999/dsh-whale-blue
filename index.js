@@ -18,7 +18,7 @@
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { COLOR, DEFAULT_DARK, DEFAULT_LIGHT, normalizeColor, whaleCss } from './lib/css.mjs'
 import { desktopStatus, patchDesktopAssets, resolveAppDir, restoreDesktopAssets } from './lib/desktop.mjs'
@@ -60,13 +60,20 @@ function normalize(raw) {
 /**
  * Where this plugin records its state: an explicit `patchFile`, otherwise the
  * profile's own patch list.
+ *
+ * The environment variable is the normal answer, but a host started from a
+ * different shell does not always export it, and a panel whose settings vanish
+ * on restart is worse than no panel. So the installed layout
+ * (`<profile>/local/whale-blue/index.mjs`) is the fallback.
  * @param {any} raw - the row's `config`.
  * @returns {string | null} absolute path, or null when it cannot be known.
  */
 function resolvePatchFile(raw) {
   if (typeof raw?.patchFile === 'string' && raw.patchFile !== '') return raw.patchFile
   const profile = process.env.DSH_PROFILE_DIR
-  return profile === undefined || profile === '' ? null : join(profile, 'cordis.patch.yml')
+  if (profile !== undefined && profile !== '') return join(profile, 'cordis.patch.yml')
+  const guessed = resolve(HERE, '..', '..', 'cordis.patch.yml')
+  return existsSync(guessed) ? guessed : null
 }
 
 /**
@@ -119,9 +126,11 @@ export function apply(ctx, raw) {
 
   /** Last partial failure worth telling the panel about. */
   let lastWarning
+  /** Why the last write to `cordis.patch.yml` failed, if it did. */
+  let storeError
 
   /** @returns {any} what the panel sees. */
-  const snapshot = () => ({ ...state, desktopApplied: desktopApplied(), warning: lastWarning })
+  const snapshot = () => ({ ...state, desktopApplied: desktopApplied(), patchFile, warning: lastWarning, storeError })
 
   /**
    * Apply the shell patch and remember a partial failure.
@@ -141,30 +150,37 @@ export function apply(ctx, raw) {
    *
    * The block is ours alone; `replaceRowBlock` keeps the user's other rows and
    * never appends a second copy.
+   * @returns {string | undefined} why the write failed, when it did.
    */
   const persist = () => {
-    if (patchFile === null) return
+    if (patchFile === null) return '找不到 cordis.patch.yml 的位置，设置无法持久化'
     try {
       const existing = existsSync(patchFile) ? readFileSync(patchFile, 'utf8') : ''
       const row = { name: MODULE_URL, ...state }
       if (typeof raw?.patchFile === 'string' && raw.patchFile !== '') row.patchFile = raw.patchFile
       const next = replaceRowBlock(existing, row)
       if (next !== existing) writeFileSync(patchFile, next, 'utf8')
+      return undefined
     } catch (error) {
       log(`could not record state in ${patchFile}: ${message(error)}`)
+      return message(error)
     }
   }
 
   /**
-   * Reconcile the desktop shell with the requested state, then record it.
+   * Record the requested state, then move the desktop shell to match it.
    *
-   * Only an explicit `desktop` field moves the shell assets: a page that only
-   * changes a color must never undo an install the user made from the CLI. A
-   * color change while the shell is synced repaints it to the new color.
+   * The write comes first on purpose: the palette is the user's decision and
+   * must survive a restart even when the shell assets cannot be touched (a
+   * locked `app.asar`, a read-only install). Only an explicit `desktop` field
+   * moves those assets, so a page that just changes a color never undoes an
+   * install the CLI made.
    * @param {any} body - partial state from the panel.
    */
   const update = (body) => {
+    const previous = state
     lastWarning = undefined
+    storeError = undefined
     const next = { ...state }
     if (body.enabled !== undefined) next.enabled = body.enabled === true
     if (body.desktop !== undefined) next.desktop = body.desktop === true
@@ -176,19 +192,23 @@ export function apply(ctx, raw) {
       next[key] = body[key].trim()
     }
 
+    state = next
+    storeError = persist()
+
     const dir = appDir()
     const applied = dir !== null && desktopStatus(dir).installed
-    if (body.desktop !== undefined && dir === null) {
-      if (next.desktop) throw new Error('DeepSeek Harness install directory not found')
-    } else if (body.desktop !== undefined) {
-      if (next.desktop && !applied) patchShell(dir, next.light)
-      else if (!next.desktop && applied) restoreDesktopAssets({ appDir: dir, log: () => {} })
-    } else if (dir !== null && applied && next.light !== state.light) {
-      patchShell(dir, next.light)
+    try {
+      if (body.desktop !== undefined) {
+        if (next.desktop && dir === null) throw new Error('DeepSeek Harness install directory not found')
+        if (dir !== null && next.desktop && !applied) patchShell(dir, next.light)
+        else if (dir !== null && !next.desktop && applied) restoreDesktopAssets({ appDir: dir, log: () => {} })
+      } else if (dir !== null && applied && next.light !== previous.light) {
+        patchShell(dir, next.light)
+      }
+    } catch (error) {
+      lastWarning = `桌面图标没有更新：${message(error)}`
+      log(lastWarning)
     }
-
-    state = next
-    persist()
   }
 
   // The CLI patches the shell without a `desktop` flag in older rows; adopt the

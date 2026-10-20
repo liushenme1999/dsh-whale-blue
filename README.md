@@ -8,6 +8,8 @@
 
 > 非官方项目。鲸鱼标志的版权归 DeepSeek 所有，本项目只是重新上色。
 
+两种装法：**DSH 的插件页面**里粘贴本仓库地址（推荐，不用 Node.js，不用克隆），或者克隆下来跑 `install.cmd`。详见 [安装](#安装)。
+
 ![改前](docs/gui-before.png)
 ![改后](docs/gui-after.png)
 

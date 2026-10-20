@@ -8,7 +8,7 @@ import { normalizeColor, whaleCss } from '../lib/css.mjs'
 import { paintWelcomeMark } from '../lib/desktop.mjs'
 import { decodeIco, encodeIco, transformIco } from '../lib/ico.mjs'
 import { decodePng, encodePng } from '../lib/png.mjs'
-import { hasPluginRow, installPluginRow, pluginDir, readPluginRow, removePluginRow } from '../lib/profile.mjs'
+import { hasPluginRow, installPluginRow, pluginDir, readPluginRow, removePluginRow, selectsBundle } from '../lib/profile.mjs'
 import { locatePatchFile, readRowBlock, replaceRowBlock, stripRowBlock } from '../lib/row.mjs'
 import { parseColor, recolorRgba } from '../lib/recolor.mjs'
 
@@ -228,6 +228,19 @@ test('profile row is installed idempotently and removed cleanly', () => {
     const after = readFileSync(join(home, 'profiles', profile, 'cordis.patch.yml'), 'utf8')
     assert.match(after, /- id: keep/)
     assert.doesNotMatch(after, /whale-blue/)
+
+    // A profile that installs the package from the Plugins page already has the
+    // row from the bundle patch; the CLI must refuse rather than add a second one.
+    writeFileSync(
+      join(home, 'profiles', profile, 'package.json'),
+      `${JSON.stringify({ name: 'profile', dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', 'dsh-whale-blue'] } } })}\n`,
+    )
+    assert.equal(selectsBundle(home, profile), true)
+    assert.throws(
+      () => installPluginRow({ dshHome: home, profile, packageDir: pkg, light: '#4d6bfe', dark: '#7aaaff', log }),
+      /already installs dsh-whale-blue as a bundle/,
+    )
+    assert.equal(hasPluginRow(home, profile), false, 'the refusal writes nothing')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

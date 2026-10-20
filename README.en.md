@@ -6,6 +6,8 @@ After installing, **Settings → 通用设置 → 外观** gains a "鲸鱼配色
 
 > Unofficial. The whale artwork belongs to DeepSeek; this project only changes its color.
 
+Two ways to install: paste this repository's URL into DSH's **Plugins** page (recommended — no Node.js, no clone), or clone it and run `install.cmd`. See [Install](#install).
+
 ![before](docs/gui-before.png)
 ![after](docs/gui-after.png)
 

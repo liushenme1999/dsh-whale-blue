@@ -91,6 +91,66 @@ No extra button and nothing over the page. After a restart, open **Settings → 
 
 Every choice is written back into the managed block of the profile's `cordis.patch.yml`, so it survives restarts. To drop the item: turn the bundle off on the Plugins page, use `install --no-ui` from the CLI, or set `ui: false` in that block.
 
+## Replacing system icons: Windows shortcut / taskbar, macOS app icon
+
+The repo ships the whale as a transparent-background icon set (brand blue `#4d6bfe`, the same artwork as in the UI):
+
+<img src="docs/whale-blue-1024.png" width="88" alt="blue whale icon">
+
+| File | For | Contents |
+| --- | --- | --- |
+| `docs/whale-blue.ico` | Windows | 16 / 20 / 24 / 32 / 40 / 48 / 64 / 128 / 256, 9 frames |
+| `docs/whale-blue.icns` | macOS | 16 – 1024, including @2x |
+| `docs/whale-blue-1024.png` | macOS Get Info paste, or anywhere you need a PNG | 1024², transparent |
+
+These replace **system icons** (shortcut, taskbar, Dock). The plugin's job is the whale inside the app; the two are independent, and both are reversible.
+
+Copy the icon somewhere permanent first (`%USERPROFILE%\Pictures\Icons\` on Windows, `~/Pictures/Icons/` on macOS) — if the file is moved or deleted the system falls back to a blank icon.
+
+### Windows: desktop shortcut + taskbar
+
+**Desktop shortcut**
+
+1. No shortcut yet? Right-click `DeepSeek Harness.exe` → **发送到 → 桌面快捷方式**;
+2. Right-click it → **属性** → **快捷方式** tab → **更改图标…**;
+3. **浏览** → pick `whale-blue.ico` → **打开** → **确定** → **确定**.
+
+**Taskbar**
+
+The taskbar pins a separate copy of the shortcut (under `%APPDATA%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar`), so the desktop one does not carry over:
+
+1. Right-click the old icon on the taskbar → **取消固定**;
+2. Right-click the desktop shortcut you just re-iconed → **固定到任务栏** (Windows 11 may hide it behind **显示更多选项**).
+
+> Nothing changed, or it changed back? **Unpin and re-pin** the taskbar entry — that is the step that matters.
+>
+> A pinned shortcut draws its own icon, but a *running* window can still carry the icon embedded in the exe; rewriting that means patching the exe resources (kills the signature and updates), which this project does not do.
+
+### macOS: app icon
+
+Both routes use the Finder's **显示简介** panel — no extra software, fully reversible.
+
+**Option 1: copy and paste**
+
+1. Open `whale-blue-1024.png` in Preview, `Command + A`, `Command + C`;
+2. In Finder → Applications, right-click DeepSeek Harness → **显示简介** (or select it and press `Command + I`);
+3. Click the **small icon at the top-left** of the panel; it gets a blue/highlighted border when selected;
+4. `Command + V` — the icon changes immediately.
+
+> If the paste does nothing you clicked the large preview on the right instead of the small icon in the top-left corner.
+
+**Option 2: drag the file in**
+
+1. Open **显示简介** the same way;
+2. Drag `whale-blue.icns` (or any 512 / 1024 PNG) onto the small icon; release when a green "+" appears.
+
+**Dock still shows the old icon?**
+Remove the app from the Dock — right-click → **选项 → 从程序坞中移除**, or drag it out — then drag it back from Applications (or just launch it again) and the new icon sticks.
+
+**To revert**: open **显示简介**, click the small icon, press `Delete` (`Backspace`).
+
+> If the app lives in `/Applications` and is not owned by you, pasting or dragging may ask for an administrator password. That is normal.
+
 ## Commands
 
 ```
@@ -156,6 +216,7 @@ Tray syncing self-checks at startup for the same reason: a bundle install has no
 - The dialog says 无法访问 GitHub / 连接 GitHub 超时? It probes the repository with `git ls-remote` before installing. Change network, or use the command line (clone and `install.cmd`).
 - Synced the tray but the welcome page is unchanged? Both are read at startup; restart DSH. If `app.asar` was busy the settings item says so: a bundle install retries on the next start, a CLI install needs `restore.cmd` + `install.cmd`.
 - A settings change that comes back after a restart means it could not be written to `cordis.patch.yml`: the item shows that in red, and `node bin/cli.mjs status` prints what the file records.
+- A replaced system icon that did not take? On Windows the taskbar entry has to be **unpinned and re-pinned** (it points at a separate shortcut copy); on macOS remove the app from the Dock and add it back. Full steps are in the section above.
 - Installed from the CLI first and then from the Plugins page? The plugin rewrites the leftover insert row into an override at startup and keeps your colors; running `restore.cmd` first is cleaner. The other order is refused by the CLI, which points at the Plugins page.
 - `dsh web` / browser use: the plugin half works everywhere (`--no-desktop`, or the Plugins page).
 - The asar integrity fuse is disabled in the desktop build, and the file length never changes.

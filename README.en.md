@@ -21,7 +21,6 @@ After installing, **Settings → 通用设置 → 外观** gains a "鲸鱼配色
 | Window / about / quit-dialog icon | `install` recolors `resources/icon.png` | ✅ |
 | First-run / sign-in welcome mark | `install` rewrites `welcome-brand.svg` inside `app.asar` in place | ✅ (whale only, text keeps its color) |
 | Settings item under 通用设置 → 外观 | injected `<script>` that inserts one DOM row | — |
-| Windows taskbar button icon | comes from the exe resources | ❌ |
 
 ![welcome mark](docs/welcome-mark.png)
 
@@ -31,10 +30,31 @@ The chat UI runs inside the Cordis plugin host, so a plugin can inject a `<style
 
 ## Install
 
-Requires Node.js 20+ (or use `install.cmd`, which also finds the node bundled with DSH).
+Requires Windows DSH desktop (verified on `0.2.1-rc.2`). **Installing from the Plugins page needs no Node.js and no clone.**
+
+### Option 1: the Plugins page (recommended)
+
+1. Open DSH and pick **插件** in the sidebar.
+2. Click **添加插件**, paste the repository URL and press Enter:
+
+   ```
+   https://github.com/liushenme1999/dsh-whale-blue
+   ```
+
+3. **安装**, then **立即启用** (a freshly installed bundle is already selected).
+4. Restart DSH (or press `Ctrl+R`).
+5. Open **Settings → 通用设置**: 鲸鱼配色 sits under 外观.
+
+That installs a **bundle**: `dsh.bundle.patch` in `package.json` points at `cordis.patch.yml`, which inserts the plugin row. Your choices are not written back into the package — they go into the profile's own `cordis.patch.yml` as an id-targeted override, so **upgrading or reinstalling the bundle keeps your colors**.
+
+This installs from GitHub, not from npm, so no registry mirror is involved. Behind a network that cannot reach GitHub the dialog reports 无法访问 GitHub / 连接 GitHub 超时; use option 2 there.
+
+### Option 2: the command line (local clone)
+
+For machines without the Plugins page (a `dsh web` build, a custom profile) or when you also want the tray icon:
 
 ```powershell
-git clone https://github.com/<you>/dsh-whale-blue.git
+git clone https://github.com/liushenme1999/dsh-whale-blue.git
 cd dsh-whale-blue
 ```
 
@@ -42,7 +62,9 @@ cd dsh-whale-blue
 2. Double-click `install.cmd`, or run `node bin/cli.mjs install`.
 3. Start DeepSeek Harness.
 
-Web GUI only (no file patching, no admin, no restart of any shell):
+This copies the package to `<profile>/local/whale-blue/` and inserts the row itself. **Pick one option per profile**: two rows with the same id mount the plugin twice. If you already installed from the CLI and switch to the Plugins page, run `restore.cmd` first — and if you forget, the plugin rewrites the leftover insert row on its next start (one extra log line on that boot).
+
+Web GUI only (no file patching, no admin, no shell restart) — which is also the default for a Plugins-page install (`desktop: false`), where tray syncing is one click in Settings:
 
 ```powershell
 node bin/cli.mjs install --no-desktop
@@ -61,7 +83,7 @@ No extra button and nothing over the page. After a restart, open **Settings → 
 - **同步托盘图标和欢迎页图标** rewrites the icons and `app.asar` right away; the tray and welcome window read them at startup, so a DSH restart is what makes them visible.
 - **默认** also un-syncs the tray and welcome mark, so one click puts everything back.
 
-Every choice is written back into the managed block of the profile's `cordis.patch.yml`, so it survives restarts. `install --no-ui` (or `ui: false` in that block) installs the plugin without the settings item.
+Every choice is written back into the managed block of the profile's `cordis.patch.yml`, so it survives restarts. To drop the item: turn the bundle off on the Plugins page, use `install --no-ui` from the CLI, or set `ui: false` in that block.
 
 ## Commands
 
@@ -92,14 +114,43 @@ dsh-whale-blue install|restore|status [options]
 
 Backups live in `<install>\resources\.dsh-whale-blue\`. After a DSH update the tool notices the assets no longer match its own output and retakes the backups.
 
+### How it becomes an installable bundle
+
+DSH's definition is narrow: **a package whose `package.json` declares `dsh.bundle.patch` is a bundle**. The Plugins page only runs `pnpm add` in the profile and appends the package name to `dsh.profile.bundles`; everything else is layered at startup:
+
+```
+each bundle's cordis.patch.yml  →  the profile's cordis.patch.yml  →  --patch overlays
+```
+
+So the package ships:
+
+| File | Role |
+| --- | --- |
+| `cordis.patch.yml` | the bundle layer: inserts the `whale-blue` row; its `config` is just the default |
+| `dsh.bundle.patch` in `package.json` | declares the bundle and the patch file |
+| `exports` in `package.json` | lets `locale/*.json`, `icon` and `cordis.patch.yml` be resolved as subpaths (an `exports` map hides everything it does not list) |
+| `locale/{zh,en}.json` | card title and description (`meta.title` / `meta.description`, readable without loading code) |
+| `icon.svg` | card icon: SVG / PNG / JPEG / WebP, ≤256 KiB, inside the package |
+
+Two loader semantics shape the managed block:
+
+1. A non-insert patch **replaces the whole `config`** (no deep merge), so every write carries the complete set of fields.
+2. A non-insert patch matches by `id`, and optionally by `name` — a mismatch skips the patch entirely. The bundle inserts the row as `whale-blue`, so the block writes only the id: the CLI's row is named by a `file://` URL, and naming it here would fail the check.
+
+One trap is bundle-specific: the bundle already inserts `whale-blue`, so a second `insert` in the profile layer would put two rows with one id in the tree and mount the plugin twice. The plugin therefore picks the shape from where it is installed (`install: 'bundle' | 'local'`, i.e. whether its path contains `node_modules`) and rewrites a leftover insert row into an override at startup.
+
+Tray syncing self-checks at startup for the same reason: a bundle install has no CLI to run, so if the config asks for the icons and the files are unpatched (say a DSH update replaced `resources/`), boot applies the patch again.
+
 ## Notes
 
 - Still black after installing? The plugin row is read at startup — restart DSH (a browser tab only needs a refresh).
 - No "鲸鱼配色" item? Same reason, plus check that the row does not say `ui: false`. It lives in Settings → 通用设置, under 外观.
-- Synced the tray but the welcome page is unchanged? Both are read at startup; restart DSH. If `app.asar` was busy, the settings item says so — quit DSH and run `restore.cmd` + `install.cmd`.
+- Installed from the Plugins page but the plugin is not listed? A new bundle is selected by default, but its row only loads after a **restart**. If the card is there but off, switch it on; if the card is missing, `pnpm add` failed — reinstall and read **查看安装详情**.
+- The dialog says 无法访问 GitHub / 连接 GitHub 超时? It probes the repository with `git ls-remote` before installing. Change network, or use the command line (clone and `install.cmd`).
+- Synced the tray but the welcome page is unchanged? Both are read at startup; restart DSH. If `app.asar` was busy the settings item says so: a bundle install retries on the next start, a CLI install needs `restore.cmd` + `install.cmd`.
 - A settings change that comes back after a restart means it could not be written to `cordis.patch.yml`: the item shows that in red, and `node bin/cli.mjs status` prints what the file records.
-- The Windows taskbar button icon is baked into the exe; changing it would break code signing, so it is out of scope.
-- `dsh web` / browser use: the plugin half works everywhere (`--no-desktop`).
+- Installed from the CLI first and then from the Plugins page? The plugin rewrites the leftover insert row into an override at startup and keeps your colors; running `restore.cmd` first is cleaner. The other order is refused by the CLI, which points at the Plugins page.
+- `dsh web` / browser use: the plugin half works everywhere (`--no-desktop`, or the Plugins page).
 - The asar integrity fuse is disabled in the desktop build, and the file length never changes.
 
 ## Development

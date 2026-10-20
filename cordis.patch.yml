@@ -1,0 +1,16 @@
+# Bundle patch for dsh-whale-blue.
+#
+# Installing this package from the Plugins page adds it to the profile's
+# `dsh.profile.bundles`; this patch is what mounts the plugin row. `config` here
+# is only the default: the row records the user's own choices in the profile's
+# `cordis.patch.yml` as an id-targeted override (`- id: whale-blue`), so this
+# file stays untouched by the settings item and survives reinstalls.
+- insert:
+    - id: whale-blue
+      name: dsh-whale-blue
+      config:
+        light: "#4d6bfe"
+        dark: "#7aaaff"
+        enabled: true
+        desktop: false
+        ui: true

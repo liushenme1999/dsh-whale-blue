@@ -146,6 +146,29 @@ test('managed row round trips, keeps user rows, and never duplicates itself', ()
   assert.doesNotMatch(stripped, /whale-blue/)
 })
 
+test('a bundle install patches the row by id instead of inserting a second one', () => {
+  const values = { name: 'file:///C:/x/index.mjs', light: '#4d6bfe', dark: '#7aaaff', enabled: true, desktop: false, ui: true }
+  const bundle = replaceRowBlock("", { ...values, mode: 'override' })
+  assert.match(bundle, /^- id: whale-blue$/m)
+  assert.doesNotMatch(bundle, /insert:/, 'the bundle patch already inserts the row')
+  assert.match(bundle, /^ {2}config:$/m)
+  assert.match(bundle, /^ {4}light: "#4d6bfe"$/m)
+
+  const parsed = readRowBlock(bundle)
+  assert.equal(parsed.mode, 'override')
+  assert.equal(parsed.light, '#4d6bfe')
+  assert.equal(parsed.name, undefined, 'an override never carries a name, so it cannot trip the loader\'s name check')
+
+  // Switching install method rewrites the block wholesale: one block, one shape.
+  const switched = replaceRowBlock(bundle, { ...values, mode: 'insert' })
+  assert.equal((switched.match(/dsh-whale-blue:start/g) ?? []).length, 1)
+  assert.equal(readRowBlock(switched).mode, 'insert')
+  assert.match(switched, /- insert:\n {4}- id: whale-blue\n {6}name: "file:\/\/\/C:\/x\/index.mjs"\n {6}config:/)
+  const back = replaceRowBlock(switched, { ...values, mode: 'override' })
+  assert.equal((back.match(/- insert:/g) ?? []).length, 0, 'the standalone insert is gone, not duplicated')
+  assert.equal(readRowBlock(back).mode, 'override')
+})
+
 test('patch file is located from the config, the profile env, or the installed layout', () => {
   const dir = mkdtempSync(join(tmpdir(), 'whale-locate-'))
   try {
@@ -160,6 +183,13 @@ test('patch file is located from the config, the profile env, or the installed l
     assert.equal(locatePatchFile({ profileDir: profile, here }), patch)
     assert.equal(locatePatchFile({ here }), patch, 'a host that exports no profile dir still finds the profile')
     assert.equal(locatePatchFile({ here: join(dir, 'elsewhere') }), null, 'nothing to guess from')
+
+    // A bundle install: pnpm's store is several levels deep, and the package
+    // ships its own cordis.patch.yml, which must not be mistaken for the profile.
+    const bundle = join(profile, 'node_modules', '.pnpm', 'dsh-whale-blue@1.3.0', 'node_modules', 'dsh-whale-blue')
+    mkdirSync(bundle, { recursive: true })
+    writeFileSync(join(bundle, 'cordis.patch.yml'), '- id: bundle\n')
+    assert.equal(locatePatchFile({ here: bundle }), patch, 'the profile, not the bundle patch')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

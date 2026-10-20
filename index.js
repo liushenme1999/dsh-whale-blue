@@ -22,11 +22,17 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { COLOR, DEFAULT_DARK, DEFAULT_LIGHT, normalizeColor, whaleCss } from './lib/css.mjs'
 import { desktopStatus, patchDesktopAssets, resolveAppDir, restoreDesktopAssets } from './lib/desktop.mjs'
-import { locatePatchFile, replaceRowBlock } from './lib/row.mjs'
+import { locatePatchFile, readRowBlock, replaceRowBlock } from './lib/row.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const MODULE_URL = import.meta.url
 const STATE_ROUTE = '/dsh-whale-blue/state'
+/**
+ * How this copy was installed: the Plugins page installs it as a profile bundle
+ * under `<profile>/node_modules`, while the CLI copies it to
+ * `<profile>/local/whale-blue`. The two need different patch shapes.
+ */
+const INSTALL_MODE = /[\\/]node_modules[\\/]/u.test(HERE) ? 'bundle' : 'local'
 /** Largest request body the settings item may send. */
 const MAX_BODY = 8 * 1024
 
@@ -125,7 +131,7 @@ export function apply(ctx, raw) {
   let storeError
 
   /** @returns {any} what the settings item sees. */
-  const snapshot = () => ({ ...state, desktopApplied: desktopApplied(), patchFile, warning: lastWarning, storeError })
+  const snapshot = () => ({ ...state, install: INSTALL_MODE, desktopApplied: desktopApplied(), patchFile, warning: lastWarning, storeError })
 
   /**
    * Apply the shell patch and remember a partial failure.
@@ -134,8 +140,9 @@ export function apply(ctx, raw) {
    */
   const patchShell = (dir, color) => {
     const result = patchDesktopAssets({ appDir: dir, color, log: () => {} })
+    const retry = INSTALL_MODE === 'bundle' ? '重启 DSH 时还会再试一次' : '退出 DSH 后运行 restore.cmd + install.cmd 可以补上'
     lastWarning = result.welcome === 'failed'
-      ? `欢迎页图标没有写入（${result.reason ?? 'archive is busy'}）：退出 DSH 后运行 restore.cmd + install.cmd 可以补上`
+      ? `欢迎页图标没有写入（${result.reason ?? 'archive is busy'}）：${retry}`
       : undefined
     if (lastWarning !== undefined) log(lastWarning)
   }
@@ -144,14 +151,17 @@ export function apply(ctx, raw) {
    * Record the current state in the profile patch list.
    *
    * The block is ours alone; `replaceRowBlock` keeps the user's other rows and
-   * never appends a second copy.
+   * never appends a second copy. Its shape follows how this copy was installed:
+   * a profile bundle already inserts `whale-blue`, so the block then patches that
+   * row by id instead of inserting a second one.
+   * @param {string} [mode] - `insert` for the CLI layout, `override` for a bundle.
    * @returns {string | undefined} why the write failed, when it did.
    */
-  const persist = () => {
+  const persist = (mode = INSTALL_MODE === 'bundle' ? 'override' : 'insert') => {
     if (patchFile === null) return '找不到 cordis.patch.yml 的位置，设置无法持久化'
     try {
       const existing = existsSync(patchFile) ? readFileSync(patchFile, 'utf8') : ''
-      const row = { name: MODULE_URL, ...state }
+      const row = { name: MODULE_URL, ...state, mode }
       if (typeof raw?.patchFile === 'string' && raw.patchFile !== '') row.patchFile = raw.patchFile
       const next = replaceRowBlock(existing, row)
       if (next !== existing) writeFileSync(patchFile, next, 'utf8')
@@ -211,6 +221,32 @@ export function apply(ctx, raw) {
   if (!state.desktop && desktopApplied()) {
     state.desktop = true
     persist()
+  }
+  // The same direction the other way: a requested sync is re-applied at startup,
+  // which is what repairs the icons after a DSH update replaced `resources/` —
+  // a bundle install has no CLI to run by hand.
+  if (state.desktop && !desktopApplied()) {
+    const dir = appDir()
+    try {
+      if (dir === null) throw new Error('DeepSeek Harness install directory not found')
+      patchShell(dir, state.light)
+    } catch (error) {
+      lastWarning = `桌面图标没有更新：${message(error)}`
+      log(lastWarning)
+    }
+  }
+  // A profile that selects the bundle must not also keep the CLI's standalone row:
+  // two `insert` entries with one id would mount this plugin twice.
+  if (INSTALL_MODE === 'bundle' && patchFile !== null) {
+    try {
+      const text = existsSync(patchFile) ? readFileSync(patchFile, 'utf8') : ''
+      if (readRowBlock(text)?.mode === 'insert') {
+        storeError = persist('override')
+        log('rewrote the standalone row as a bundle override')
+      }
+    } catch (error) {
+      log(`could not rewrite the standalone row: ${message(error)}`)
+    }
   }
 
   ctx.on('webserver/index-inject', (table) => {

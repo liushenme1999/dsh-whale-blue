@@ -23,7 +23,7 @@ import {
   restoreDesktopAssets,
   stateDir,
 } from '../lib/desktop.mjs'
-import { installPluginRow, pluginDir, readPluginRow, removePluginRow } from '../lib/profile.mjs'
+import { installPluginRow, pluginDir, readPluginRow, removePluginRow, selectsBundle } from '../lib/profile.mjs'
 
 const PACKAGE = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 const PACKAGE_DIR = dirname(fileURLToPath(new URL('../index.js', import.meta.url)))
@@ -51,6 +51,11 @@ Options:
   -v, --version       print the version
 
 Notes:
+  * The recommended install is the Plugins page: DeepSeek Harness -> 插件 ->
+    添加插件 -> paste https://github.com/liushenme1999/dsh-whale-blue .
+    This command is the standalone alternative: it copies the package into
+    <dsh-home>/profiles/<profile>/local/whale-blue instead. Use one or the other
+    for a profile: two rows with the same id mount the plugin twice.
   * Only hex colors (#rgb, #rrggbb) are accepted.
   * The desktop shell files live inside the install directory: close DeepSeek
     Harness before running \`install\`, then start it again.
@@ -247,15 +252,24 @@ async function restore(config) {
 async function status(config) {
   console.log(`dsh-whale-blue ${PACKAGE.version}\n`)
   const row = readPluginRow(config.dshHome, config.profile)
+  const bundle = selectsBundle(config.dshHome, config.profile)
   console.log('Web GUI plugin')
   console.log(`  profile:  ${config.profile}`)
-  console.log(`  row:      ${row === null ? 'not installed' : 'installed'}`)
-  console.log(`  module:   ${join(pluginDir(config.dshHome, config.profile), 'index.mjs')}`)
+  console.log(`  install:  ${bundle ? 'bundle (Plugins page)' : row === null ? 'not installed' : 'standalone (local copy)'}`)
+  if (bundle) {
+    console.log('  row:      inserted by the bundle patch; colors are an id override in cordis.patch.yml')
+  } else {
+    console.log(`  row:      ${row === null ? 'not installed' : 'installed'}`)
+    console.log(`  module:   ${join(pluginDir(config.dshHome, config.profile), 'index.mjs')}`)
+  }
   if (row !== null) {
     console.log(`  colors:   light ${row.light ?? '(default)'}   dark ${row.dark ?? '(default)'}`)
     console.log(`  whale:    ${row.enabled === false ? 'default black' : 'recolored'}`)
     console.log(`  settings: ${row.ui === false ? 'hidden' : 'visible (Settings > 通用设置 > 外观)'}`)
     console.log(`  desktop:  ${row.desktop === true ? 'synced' : 'not synced'}`)
+  } else if (bundle) {
+    console.log('  colors:   light #4d6bfe   dark #7aaaff (bundle defaults, never changed)')
+    console.log('  settings: visible (Settings > 通用设置 > 外观)')
   }
 
   console.log('\nDesktop shell')

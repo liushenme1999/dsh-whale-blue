@@ -44,7 +44,7 @@ Options:
   --light <color>     light-palette whale color (default: ${DEFAULT_LIGHT})
   --dark <color>      dark-palette whale color (default: ${DEFAULT_DARK})
   --no-plugin         skip the Web GUI plugin row
-  --no-ui             keep the plugin but hide the in-page panel
+  --no-ui             keep the plugin but hide the settings item
   --no-desktop        skip the tray icon, window icon and welcome mark
   --dry-run           report what would change without writing anything
   -h, --help          show this help
@@ -181,7 +181,7 @@ async function install(config) {
         log: (line) => console.log(line),
       })
       console.log('  -> restart DeepSeek Harness to load it')
-      console.log('  -> then use the whale button in the bottom-right corner to change it\n')
+      console.log('  -> then open Settings > 通用设置: the 鲸鱼配色 item sits under 外观\n')
     } catch (error) {
       console.error(`  failed: ${error instanceof Error ? error.message : String(error)}\n`)
       code = code === 0 ? 1 : code
@@ -254,7 +254,7 @@ async function status(config) {
   if (row !== null) {
     console.log(`  colors:   light ${row.light ?? '(default)'}   dark ${row.dark ?? '(default)'}`)
     console.log(`  whale:    ${row.enabled === false ? 'default black' : 'recolored'}`)
-    console.log(`  panel:    ${row.ui === false ? 'hidden' : 'visible (bottom-right whale button)'}`)
+    console.log(`  settings: ${row.ui === false ? 'hidden' : 'visible (Settings > 通用设置 > 外观)'}`)
     console.log(`  desktop:  ${row.desktop === true ? 'synced' : 'not synced'}`)
   }
 

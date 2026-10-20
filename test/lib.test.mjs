@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { readAsarFile, replaceAsarFile } from '../lib/asar.mjs'
+import { normalizeColor, whaleCss } from '../lib/css.mjs'
 import { paintWelcomeMark } from '../lib/desktop.mjs'
 import { decodeIco, encodeIco, transformIco } from '../lib/ico.mjs'
 import { decodePng, encodePng } from '../lib/png.mjs'
@@ -33,6 +34,14 @@ test('png survives an encode/decode round trip', () => {
   assert.equal(decoded.width, 4)
   assert.equal(decoded.height, 3)
   assert.deepEqual(decoded.rgba, rgba)
+})
+
+test('whale stylesheet skips the settings preview icons', () => {
+  const css = whaleCss({ light: '#4d6bfe', dark: '#7aaaff' })
+  assert.match(css, /svg\[viewBox="0 0 23\.16 17\.04"\]:not\(\[data-dsh-wb-icon\]\) path\{fill:#4d6bfe\}/)
+  assert.match(css, /body\[data-ds-dark-theme\] svg\[viewBox="0 0 23\.16 17\.04"\]:not\(\[data-dsh-wb-icon\]\) path\{fill:#7aaaff\}/)
+  assert.equal(css.match(/data-dsh-wb-icon/g).length, 2, 'both rules carry the exclusion')
+  assert.equal(normalizeColor('#ff0000; }body{display:none}', '#4d6bfe'), '#4d6bfe')
 })
 
 test('recolor maps dark pixels and leaves light ones alone', () => {

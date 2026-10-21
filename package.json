@@ -1,6 +1,6 @@
 {
   "name": "dsh-whale-blue",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Repaint the DeepSeek Harness whale DeepSeek blue — a DSH bundle installable from the Plugins page, with its colour form on the bundle detail page (插件 → 已安装插件 → 蓝色鲸鱼) and a companion patcher for the tray icon, window icon and welcome mark.",
   "type": "module",
   "icon": "./icon.svg",

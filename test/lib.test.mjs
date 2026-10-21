@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import vm from 'node:vm'
 import { readAsarFile, replaceAsarFile } from '../lib/asar.mjs'
 import { normalizeColor, whaleCss } from '../lib/css.mjs'
 import { paintWelcomeMark } from '../lib/desktop.mjs'
@@ -42,6 +43,29 @@ test('whale stylesheet skips the settings preview icons', () => {
   assert.match(css, /body\[data-ds-dark-theme\] svg\[viewBox="0 0 23\.16 17\.04"\]:not\(\[data-dsh-wb-icon\]\) path\{fill:#7aaaff\}/)
   assert.equal(css.match(/data-dsh-wb-icon/g).length, 2, 'both rules carry the exclusion')
   assert.equal(normalizeColor('#ff0000; }body{display:none}', '#4d6bfe'), '#4d6bfe')
+})
+
+test('the browser half survives being executed twice in one page scope', () => {
+  // Turning the bundle off and on re-arrives its graph row, so the page runs
+  // client.js again without wiping the global scope: a top-level `const` there
+  // throws "Identifier has already been declared" and the form never registers.
+  const registrationTarget = { mode: 'live', load: () => undefined }
+  const ids = []
+  const sandbox = {
+    window: {
+      __ModuleLoader__: {
+        load: (registration) => {
+          ids.push(registration.id)
+          registrationTarget.load(registration)
+        },
+      },
+    },
+  }
+  const context = vm.createContext(sandbox)
+  const source = readFileSync(new URL('../client.js', import.meta.url), 'utf8')
+  vm.runInContext(source, context)
+  vm.runInContext(source, context)
+  assert.deepEqual(ids, ['dsh-whale-blue', 'dsh-whale-blue'])
 })
 
 test('recolor maps dark pixels and leaves light ones alone', () => {

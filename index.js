@@ -8,13 +8,14 @@
  *    wins over that presentation attribute, so a single rule recolors the
  *    sidebar mark, the collapsed rail and the conversation hero without
  *    touching any theme token. The rule arrives through the documented
- *    `webserver/index-inject` seat, and the same seat carries the settings script.
+ *    `webserver/index-inject` seat. The form that edits it lives in the browser
+ *    half (`client.js`), on this bundle's own page.
  *
- * 2. Own the settings API. `/dsh-whale-blue/state` reports the current palette
- *    and accepts changes from Settings → 通用设置: it recolors the tray/window
- *    icons and the welcome wordmark in the Electron shell when asked, and
- *    records everything in the managed block of this profile's
- *    `cordis.patch.yml`, which is what the next boot reads.
+ * 2. Own the palette API. `/dsh-whale-blue/state` reports the current palette
+ *    and accepts changes from that form: it recolors the tray/window icons and
+ *    the welcome wordmark in the Electron shell when asked, and records
+ *    everything in the managed block of this profile's `cordis.patch.yml`,
+ *    which is what the next boot reads.
  */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
@@ -33,13 +34,13 @@ const STATE_ROUTE = '/dsh-whale-blue/state'
  * `<profile>/local/whale-blue`. The two need different patch shapes.
  */
 const INSTALL_MODE = /[\\/]node_modules[\\/]/u.test(HERE) ? 'bundle' : 'local'
-/** Largest request body the settings item may send. */
+/** Largest request body the colour form may send. */
 const MAX_BODY = 8 * 1024
 
 /** Cordis plugin name, used by loader diagnostics. */
 export const name = 'whale-blue'
 
-/** The settings API rides the Web server's route table. */
+/** The palette API rides the Web server's route table. */
 export const inject = ['webServer']
 
 /** @param {unknown} value - anything. @returns {string} */
@@ -50,7 +51,7 @@ function message(value) {
 /**
  * Resolve the configured palette and switches.
  * @param {any} raw - the row's `config`.
- * @returns {{ light: string, dark: string, enabled: boolean, desktop: boolean, ui: boolean }} resolved state.
+ * @returns {{ light: string, dark: string, enabled: boolean, desktop: boolean }} resolved state.
  */
 function normalize(raw) {
   const config = raw ?? {}
@@ -59,7 +60,6 @@ function normalize(raw) {
     dark: normalizeColor(config.dark, DEFAULT_DARK),
     enabled: config.enabled !== false,
     desktop: config.desktop === true,
-    ui: config.ui !== false,
   }
 }
 
@@ -125,12 +125,12 @@ export function apply(ctx, raw) {
     return dir !== null && desktopStatus(dir).installed
   }
 
-  /** Last partial failure worth showing in the settings item. */
+  /** Last partial failure worth showing in the colour form. */
   let lastWarning
   /** Why the last write to `cordis.patch.yml` failed, if it did. */
   let storeError
 
-  /** @returns {any} what the settings item sees. */
+  /** @returns {any} what the colour form sees. */
   const snapshot = () => ({ ...state, install: INSTALL_MODE, desktopApplied: desktopApplied(), patchFile, warning: lastWarning, storeError })
 
   /**
@@ -180,7 +180,7 @@ export function apply(ctx, raw) {
    * locked `app.asar`, a read-only install). Only an explicit `desktop` field
    * moves those assets, so a page that just changes a color never undoes an
    * install the CLI made.
-   * @param {any} body - partial state from the settings item.
+   * @param {any} body - partial state from the colour form.
    */
   const update = (body) => {
     const previous = state
@@ -217,7 +217,7 @@ export function apply(ctx, raw) {
   }
 
   // The CLI patches the shell without a `desktop` flag in older rows; adopt the
-  // shell's actual state instead of undoing it on the first change from the settings item.
+  // shell's actual state instead of undoing it on the first change from the colour form.
   if (!state.desktop && desktopApplied()) {
     state.desktop = true
     persist()
@@ -249,9 +249,13 @@ export function apply(ctx, raw) {
     }
   }
 
+  // The form itself lives in the bundle's client half (`client.js`), registered
+  // into the Plugins page. A standalone copy has no card there — the Plugins page
+  // lists profile bundles, and this one is just a file row — so it keeps the
+  // Settings item instead.
   ctx.on('webserver/index-inject', (table) => {
     if (state.enabled) table.push({ kind: 'style', text: whaleCss(state) })
-    if (!state.ui) return
+    if (INSTALL_MODE !== 'local') return
     try {
       table.push({ kind: 'script', text: readFileSync(join(HERE, 'lib', 'ui.js'), 'utf8') })
     } catch (error) {

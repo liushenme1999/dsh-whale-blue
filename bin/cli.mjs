@@ -44,7 +44,6 @@ Options:
   --light <color>     light-palette whale color (default: ${DEFAULT_LIGHT})
   --dark <color>      dark-palette whale color (default: ${DEFAULT_DARK})
   --no-plugin         skip the Web GUI plugin row
-  --no-ui             keep the plugin but hide the settings item
   --no-desktop        skip the tray icon, window icon and welcome mark
   --dry-run           report what would change without writing anything
   -h, --help          show this help
@@ -75,7 +74,6 @@ function parseOptions(argv) {
     else if (token === '-v' || token === '--version') options.version = true
     else if (token === '--dry-run') options.dryRun = true
     else if (token === '--no-plugin') options.noPlugin = true
-    else if (token === '--no-ui') options.noUi = true
     else if (token === '--no-desktop') options.noDesktop = true
     else if (token === '--app-dir') options.appDir = argv[++i]
     else if (token.startsWith('--app-dir=')) options.appDir = token.slice('--app-dir='.length)
@@ -118,7 +116,6 @@ function settings(options) {
     appDir: typeof options.appDir === 'string' ? options.appDir : undefined,
     dryRun: options.dryRun === true,
     noPlugin: options.noPlugin === true,
-    noUi: options.noUi === true,
     noDesktop: options.noDesktop === true,
   }
 }
@@ -181,12 +178,11 @@ async function install(config) {
         light: config.light,
         dark: config.dark,
         desktop: desktopPatched,
-        ui: !config.noUi,
         dryRun: config.dryRun,
         log: (line) => console.log(line),
       })
       console.log('  -> restart DeepSeek Harness to load it')
-      console.log('  -> then open Settings > 通用设置: the 鲸鱼配色 item sits under 外观\n')
+      console.log('  -> then open 设置 -> 通用设置: the 鲸鱼配色 item sits under 外观\n')
     } catch (error) {
       console.error(`  failed: ${error instanceof Error ? error.message : String(error)}\n`)
       code = code === 0 ? 1 : code
@@ -265,11 +261,11 @@ async function status(config) {
   if (row !== null) {
     console.log(`  colors:   light ${row.light ?? '(default)'}   dark ${row.dark ?? '(default)'}`)
     console.log(`  whale:    ${row.enabled === false ? 'default black' : 'recolored'}`)
-    console.log(`  settings: ${row.ui === false ? 'hidden' : 'visible (Settings > 通用设置 > 外观)'}`)
+    console.log(`  form:     ${bundle ? 'on the Plugins page (插件 -> 已安装插件 -> 蓝色鲸鱼)' : 'in Settings (设置 -> 通用设置 -> 外观)'}`)
     console.log(`  desktop:  ${row.desktop === true ? 'synced' : 'not synced'}`)
   } else if (bundle) {
     console.log('  colors:   light #4d6bfe   dark #7aaaff (bundle defaults, never changed)')
-    console.log('  settings: visible (Settings > 通用设置 > 外观)')
+    console.log('  form:     on the Plugins page (插件 -> 已安装插件 -> 蓝色鲸鱼)')
   }
 
   console.log('\nDesktop shell')

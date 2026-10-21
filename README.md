@@ -4,7 +4,7 @@
 
 聊天界面的品牌标志、系统托盘图标、窗口 / 关于面板图标、首次启动的欢迎页——一次性全部换掉，随时可以逐字节还原。
 
-装完之后，**设置 → 通用设置 → 外观** 下面会多一项「鲸鱼配色」：**一键换蓝、一键还原**，也能自己调亮色 / 暗色两个颜色。页面本身不加任何按钮。
+装完之后，**插件 → 已安装插件 → 蓝色鲸鱼** 这一页就带着「鲸鱼配色」：**一键换蓝、一键还原**，也能自己调亮色 / 暗色两个颜色。配色项跟着插件走，设置页面里不会多出任何东西。
 
 > 非官方项目。鲸鱼标志的版权归 DeepSeek 所有，本项目只是重新上色。
 
@@ -24,7 +24,7 @@
 | 系统托盘 / 通知区域图标 | `install` 重给 `resources/tray.ico` 上色 | ✅ |
 | 窗口图标、关于面板、退出确认框 | `install` 重给 `resources/icon.png` 上色 | ✅ |
 | 首次启动 / 登录欢迎页的品牌标志 | `install` 原地改写 `app.asar` 里的 `welcome-brand.svg` | ✅（只有鲸鱼，文字保持原色） |
-| 设置页里的「鲸鱼配色」 | 注入一段 `<script>`，挂到 设置 → 通用设置 → 外观 下面 | — |
+| 插件详情页里的「鲸鱼配色」 | 包自带的浏览器半侧 `client.js`，注册到插件页面的 `plugins.bundle.config` 槽位 | — |
 
 ![欢迎页](docs/welcome-mark.png)
 
@@ -62,9 +62,9 @@ DSH 的界面由两层组成，鲸鱼在这两层各有一份：
 
    > 直接关掉对话框也算装好了，只是组合包**保持关闭**——去 **已安装插件** 里找到「蓝色鲸鱼」，把它的开关打开（点开卡片，详情页有同一个开关）。
 4. 重启 DSH。`Ctrl+R` 只刷新页面：插件行是 Host 启动时组合出来的，所以第一次要整个重启。
-5. 打开 **设置 → 通用设置**，「鲸鱼配色」就在 **外观** 下面。
+5. 打开 **插件 → 已安装插件**，点「蓝色鲸鱼」那张卡片，「鲸鱼配色」就在这一页上。
 
-这样装的是一个**组合包**（bundle）：`package.json` 里的 `dsh.bundle.patch` 指向 `cordis.patch.yml`，由它把插件行插进 profile。你在设置里的选择不会写回这个包，而是写进 profile 自己的 `cordis.patch.yml`（一条按 `id` 覆盖的行），所以**升级、重装、换版本都不会丢你的颜色**。
+这样装的是一个**组合包**（bundle）：`package.json` 里的 `dsh.bundle.patch` 指向 `cordis.patch.yml`，由它把插件行插进 profile。你在这一页里的选择不会写回这个包，而是写进 profile 自己的 `cordis.patch.yml`（一条按 `id` 覆盖的行），所以**升级、重装、换版本都不会丢你的颜色**。
 
 装完想确认一下的话：`~/.dsh/profiles/desktop/package.json` 的 `dsh.profile.bundles` 列表里应该有 `dsh-whale-blue`。只有 `dependencies` 里有它、`bundles` 里没有，就是组合包装好了但没启用。
 
@@ -102,7 +102,7 @@ Desktop shell (tray icon, window icon, welcome mark)
   app.asar (renderer/assets/welcome-brand.svg): 15929 bytes, whale repainted
 ```
 
-这种方式把包拷到 `<profile>/local/whale-blue/`，插件行由命令行自己插入。**同一个 profile 只选一种方式**：插两行同 `id` 的组件会让插件被加载两次。已经用命令行装过、又想改用插件页面时，先跑一次 `restore.cmd` 再装；忘了也不要紧，插件启动时会把旧的插入行改写成覆盖行，只是那一次启动会多一条日志。
+这种方式把包拷到 `<profile>/local/whale-blue/`，插件行由命令行自己插入。重启之后，配色项在 **设置 → 通用设置 → 外观** 下面——命令行装的插件不会出现在插件页面（那份列表只列组合包）。**同一个 profile 只选一种方式**：插两行同 `id` 的组件会让插件被加载两次。已经用命令行装过、又想改用插件页面时，先跑一次 `restore.cmd` 再装；忘了也不要紧，插件启动时会把旧的插入行改写成覆盖行，只是那一次启动会多一条日志。
 
 ### 只想要网页里的蓝鲸鱼
 
@@ -110,7 +110,7 @@ Desktop shell (tray icon, window icon, welcome mark)
 node bin/cli.mjs install --no-desktop
 ```
 
-只会往 profile 里写一行插件配置，不碰安装目录，重启 DSH 生效。插件页面装的时候默认就是这样（`desktop: false`），托盘图标在设置里勾一下才会同步。
+只会往 profile 里写一行插件配置，不碰安装目录，重启 DSH 生效。插件页面装的时候默认就是这样（`desktop: false`），托盘图标在插件详情页里勾一下才会同步。
 
 ### 各平台说明
 
@@ -120,20 +120,22 @@ node bin/cli.mjs install --no-desktop
 
 ---
 
-## 设置里的配色项
+## 插件详情页里的配色项
 
-不另起按钮、不挡视线。重启 DSH 之后，打开 **设置 → 通用设置**，它就在 **外观** 选项下面：
+打开 **插件 → 已安装插件 → 蓝色鲸鱼**，配色项就在包名下面、组件列表上面——和官方组的配置项同一个位置，不动设置页面：
 
 | 亮色 | 暗色 |
 | --- | --- |
-| ![亮色设置项](docs/settings-light.png) | ![暗色设置项](docs/settings-dark.png) |
+| ![亮色下的配色项](docs/plugin-light.png) | ![暗色下的配色项](docs/plugin-dark.png) |
 
 - **蓝色 / 默认**：一键切换，网页立即变，不用刷新。
 - **亮色 / 暗色**：直接改颜色（`#rgb` 或 `#rrggbb`），改完网页同样立即生效。
 - **同步托盘图标和欢迎页图标**：勾上会立刻改写安装目录里的图标和 `app.asar`；图标与欢迎页是 DSH 启动时读的，**重启 DSH 后**才看得到。
 - **默认** 除了取消换色，也会把托盘图标和欢迎页一起还原，等于全部回到原样。
 
-每个选择都会写回 profile 的 `cordis.patch.yml`（就是下面那个标记块），所以下次启动还是你选的样子。不想要这个设置项：插件页面里把组合包关掉，命令行装的用 `install --no-ui`，或者把行里的 `ui:` 改成 `false`。
+每个选择都会写回 profile 的 `cordis.patch.yml`（就是下面那个标记块），所以下次启动还是你选的样子。不想要这个配色项：把组合包关掉（换色和配色项一起停用），或者卸掉插件。
+
+> 命令行装的那份（`local/whale-blue`）不会出现在插件页面里——插件页面列的是 profile 的组合包，命令行装的只是一行文件路径。所以它把**同一组选项**放在 **设置 → 通用设置 → 外观** 下面，行为、写盘位置都一样。
 
 ---
 
@@ -212,7 +214,6 @@ dsh-whale-blue status  [options]   看看现在是什么状态
 --light <color>      亮色下的鲸鱼颜色（默认 #4d6bfe）
 --dark <color>       暗色下的鲸鱼颜色（默认 #7aaaff）
 --no-plugin          跳过网页插件
---no-ui              装插件但不加设置里的配色项
 --no-desktop         跳过托盘/窗口图标/欢迎页
 --dry-run            只报告，不写任何文件
 ```
@@ -229,7 +230,7 @@ restore.cmd        # 或 node bin/cli.mjs restore
 
 ## 自定义颜色
 
-最省事的方式是在 **设置 → 通用设置** 里改颜色框。等价于命令行：
+最省事的方式是在 **插件 → 已安装插件 → 蓝色鲸鱼** 这一页里改颜色框。等价于命令行：
 
 ```powershell
 node bin/cli.mjs install --light "#5b8cff" --dark "#9dc0ff"
@@ -247,7 +248,6 @@ node bin/cli.mjs install --light "#5b8cff" --dark "#9dc0ff"
         dark: "#7aaaff"
         enabled: true      # false = 保持默认黑色
         desktop: true      # 托盘 / 欢迎页是否同步
-        ui: true           # false = 不加设置里的配色项
 # dsh-whale-blue:end
 ```
 
@@ -261,7 +261,6 @@ node bin/cli.mjs install --light "#5b8cff" --dark "#9dc0ff"
     dark: "#7aaaff"
     enabled: true
     desktop: false
-    ui: true
 # dsh-whale-blue:end
 ```
 
@@ -306,17 +305,19 @@ body[data-ds-dark-theme] svg[viewBox="0 0 23.16 17.04"] path { fill: #7aaaff }
 
 `replaceAsarFile()` 会强制校验"替换后长度必须一致"，不一致就报错退出，不会把归档写坏。
 
-### 设置里的配色项
+### 插件详情页里的配色项
 
-设置项不是前端打包产物，就是一段注入到 `index.html` 里的普通 `<script>`：
+配色项不是注入到设置页里的脚本，而是这个包自带的**浏览器半侧**：
 
-- `ctx.on('webserver/index-inject', table => table.push({ kind: 'script', text }))`——官方给插件留的注入口，和那条 CSS 在同一个位置，`kind: 'style'` / `kind: 'script'` 随你放；
-- 设置项本身就是一个普通 DOM 节点：脚本先找到「外观」那一块（`class$="_title"` 且文字是「外观」），再把节点插到它后面。类名是**从页面上现读的**（`v01cdW_group` / `v01cdW_title` / `v01cdW_cubeRow` / `v01cdW_themeCube`），所以间距、圆角、hover、选中态都跟旁边原生项一模一样；自己那套样式全裹在 `:where()` 里，权重为 0，只在原生类名变了以后兜底，不会反过来抢样式；
-- 设置页是按需渲染的，关掉就整棵卸载，所以脚本挂了一个 `MutationObserver`（150ms 合并），发现节点被 React 拔掉就重新插回去，打开/关闭设置多少次都一样；
-- 状态走 `/dsh-whale-blue/state`（`ctx.webServer.register`）：GET 取当前值，POST 改。POST 要求一个自定义头 `x-dsh-whale-blue: 1`，别的网页没法用跨站表单替你改设置——那会先触发预检，而预检没人应答；
-- 改完写回 `cordis.patch.yml` 的标记块，下次启动读到的就是它。
+- `package.json` 里声明 `dsh.client`（`platform: 'web'`、`inject: ['@deepseek-ai/dsh-client-ui-plugin-manager']`）和 `exports['./client']`，宿主会把 `client.js` 当普通浏览器模块发给页面，**没有构建步骤**；
+- `client.js` 只做一件事：往插件页面的 `plugins.bundle.config` 槽位注册一个 React 组件，**key 用包名** `dsh-whale-blue`。插件页面渲染到某个组合包时按包名取这一项，所以它正好落在简介和「包含的组件」之间——官方组的配置项也是这个位置；
+- 页面自己负责「什么时候显示」：组合包开着、卡片被打开才挂载；关掉组合包，配色项一起消失，不用另一个开关；
+- 状态还是走 `/dsh-whale-blue/state`（`ctx.webServer.register`）：GET 取当前值，POST 改。POST 要求一个自定义头 `x-dsh-whale-blue: 1`，别的网页没法用跨站表单替你改设置——那会先触发预检，而预检没人应答；
+- 宿主注入的那条 CSS 是页面加载时算出来的，所以改完颜色由 `client.js` 自己再挂一份 `<style id="dsh-whale-blue-live">` 盖上去，网页不用刷新；改完写回 `cordis.patch.yml` 的标记块，下次启动读到的就是它。
 
-有个细节：设置项里的鲸鱼预览和页面上的品牌标志是同一个 SVG（同一个 `viewBox`），换色那条 CSS 会一视同仁地把预览也涂蓝。所以预览图标带上 `data-dsh-wb-icon`，规则写成 `svg[viewBox="…"]:not([data-dsh-wb-icon]) path`，「默认」那个方块才留得住本色。
+命令行装的那份没有卡片，用不了这个槽位，所以同一个表单另有一份**注入到设置页**的旧实现（`lib/ui.js`，普通 DOM，零构建）：只在 `INSTALL_MODE === 'local'` 时注入，两种安装方式各用各的，状态接口共用。
+
+有个细节：配色项里的鲸鱼预览和页面上的品牌标志是同一个 SVG（同一个 `viewBox`），换色那条 CSS 会一视同仁地把预览也涂蓝。所以预览图标带上 `data-dsh-wb-icon`，规则写成 `svg[viewBox="…"]:not([data-dsh-wb-icon]) path`，「默认」那个方块才留得住本色；「蓝色」方块的预览色走 `--dsh-wb-preview`，亮色 / 暗色各取各的调色板。
 
 有个 Electron 的坑要绕：桌面外壳里 `node:fs` 被 asar 层接管，`open('app.asar', 'r+')` 会被理解成"打开 asar 里的某个文件"，直接 `ENOENT,  not found in …app.asar`。所以 `lib/asar.mjs` 检测到 `process.versions.electron` 时改用 `original-fs`（Electron 提供的、绕过 asar 层的原始 fs）。这样在**运行中的** DSH 里勾一下"同步"，也能把欢迎页写进去。
 
@@ -368,11 +369,8 @@ DSH 对组合包的定义很窄：**`package.json` 里声明了 `dsh.bundle.patc
 **改完还是黑的？**
 插件行是启动时读的，必须重启 DSH。托盘图标同样是启动时加载的。浏览器里的话刷新页面即可。
 
-**设置里没有「鲸鱼配色」？**
-同上，装完要重启 DSH（`dsh web` 的话刷新页面）。另外看下行里有没有 `ui: false`——写了就不注入这个设置项。打开设置 → 通用设置，它就在「外观」下面。
-
-**插件页面装完，设置里没有「鲸鱼配色」？**
-先确认组合包是**开着**的：插件页面 → **已安装插件** → 「蓝色鲸鱼」的开关。安装完直接关掉对话框的话，组合包是装好了但**关着**的，它的 patch 层不生效，插件行也就不会被插入（`package.json` 里 `dependencies` 有它、`dsh.profile.bundles` 没有它）。打开开关，再重启 DSH。
+**插件详情页里没有「鲸鱼配色」？**
+先确认组合包是**开着**的：插件页面 → **已安装插件** → 「蓝色鲸鱼」的开关。安装完直接关掉对话框的话，组合包是装好了但**关着**的，它的 patch 层不生效，插件行也就不会被插入（`package.json` 里 `dependencies` 有它、`dsh.profile.bundles` 没有它）。打开开关，再重启 DSH。命令行装的还要看版本：`1.3.0` 及更早把配色项放在 设置 → 通用设置 → 外观，`1.4.0` 起才搬到插件详情页。
 
 **插件页面装完，插件列表里没有？**
 卡片不在列表里，说明 `pnpm add` 没成功，重装一次看「查看安装详情」里的 pnpm 输出。
@@ -381,10 +379,10 @@ DSH 对组合包的定义很窄：**`package.json` 里声明了 `dsh.bundle.patc
 安装前插件页面会用 `git ls-remote` 探一下仓库，探不通就不往下走。换网络，或者改用命令行方式（clone 下来跑 `install.cmd`）。
 
 **勾了"同步托盘"但欢迎页没变？**
-图标和欢迎页都是 DSH 启动时读的，重启一次才生效。万一 `app.asar` 正被占用写不进去，设置项下面会有一行提示：插件页面装的，下次启动会自动再试一次；命令行装的，退出 DSH 后跑 `restore.cmd` + `install.cmd` 补上。
+图标和欢迎页都是 DSH 启动时读的，重启一次才生效。万一 `app.asar` 正被占用写不进去，配色项下面会有一行提示：插件页面装的，下次启动会自动再试一次；命令行装的，退出 DSH 后跑 `restore.cmd` + `install.cmd` 补上。
 
-**设置里改完，重启又变回去了？**
-设置里的每个选择都写进 profile 的 `cordis.patch.yml`，重启读的就是它。万一写不进去（权限、路径），设置项下面会出红字，`node bin/cli.mjs status` 也会显示文件里到底记了什么。
+**配色项里改完，重启又变回去了？**
+配色项里的每个选择都写进 profile 的 `cordis.patch.yml`，重启读的就是它。万一写不进去（权限、路径），配色项下面会出红字，`node bin/cli.mjs status` 也会显示文件里到底记了什么。
 
 **欢迎页没变？**
 说明当时 `app.asar` 被占用，`install` 的输出里会有 `skipped`。完全退出 DSH 再跑一次 `install`。
@@ -409,16 +407,17 @@ Windows：任务栏上的钉住项要用**取消固定 → 重新固定**才会�
 node --test test/lib.test.mjs
 ```
 
-测试覆盖：PNG 编解码往返、去色映射、欢迎页改写（长度不变、只改鲸鱼、失败时报错）、ICO 多帧、asar 原地读写（包括"长度不一致必须拒绝"）、标记块反复写入只留一份且不碰用户自己的行、插件页面那种"按 id 覆盖"的写法（含切换安装方式时不产生第二条插入行）、组合包 `node_modules` 路径下仍能找到 profile 的 patch 文件，以及插件安装/卸载。
+测试覆盖：PNG 编解码往返、去色映射、欢迎页改写（长度不变、只改鲸鱼、失败时报错）、ICO 多帧、asar 原地读写（包括"长度不一致必须拒绝"）、标记块反复写入只留一份且不碰用户自己的行、空的 `[]` patch 文件写入后仍是合法 YAML、插件页面那种"按 id 覆盖"的写法（含切换安装方式时不产生第二条插入行）、组合包 `node_modules` 路径下仍能找到 profile 的 patch 文件，以及插件安装/卸载（含浏览器半侧被一起拷进 `local/whale-blue/`）。
 
 目录：
 
 ```
 index.js           Cordis 插件（网页界面 + /dsh-whale-blue/state 接口；装进 profile 时改名为 index.mjs）
+client.js          浏览器半侧：插件详情页里的「鲸鱼配色」表单（注册到 plugins.bundle.config 槽位，无构建步骤）
 cordis.patch.yml   组合包那一层：插入 whale-blue 这行（插件页面安装时用）
 icon.svg           插件页面卡片上的图标（鲸鱼，品牌蓝）
 locale/zh.json     卡片标题与简介（zh / en 各一份）
-lib/ui.js          注入到页面里的设置项（原生 DOM，挂到 设置 → 通用设置 → 外观 下面，无构建步骤）
+lib/ui.js          命令行装时注入到设置页的配色项（普通 DOM，挂到 设置 → 通用设置 → 外观 下面）
 lib/css.mjs        那条鲸鱼样式表
 lib/row.mjs        cordis.patch.yml 里那个标记块的读写（插入行 / 覆盖行两种形状）
 bin/cli.mjs        命令行：install / restore / status

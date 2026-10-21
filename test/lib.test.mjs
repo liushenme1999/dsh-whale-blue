@@ -126,7 +126,7 @@ test('asar entries can be read and replaced in place, and length changes are rej
 
 test('managed row round trips, keeps user rows, and never duplicates itself', () => {
   const initial = '- id: keep\n  name: "keep"\n'
-  const values = { name: 'file:///C:/x/index.mjs', light: '#4d6bfe', dark: '#7aaaff', enabled: true, desktop: false, ui: true }
+  const values = { name: 'file:///C:/x/index.mjs', light: '#4d6bfe', dark: '#7aaaff', enabled: true, desktop: false }
   const once = replaceRowBlock(initial, values)
   assert.match(once, /- id: keep/)
   assert.equal((once.match(/dsh-whale-blue:start/g) ?? []).length, 1)
@@ -138,7 +138,6 @@ test('managed row round trips, keeps user rows, and never duplicates itself', ()
   const parsed = readRowBlock(twice)
   assert.equal(parsed.enabled, false)
   assert.equal(parsed.light, '#0000ff')
-  assert.equal(parsed.ui, true)
   assert.equal(readRowBlock(initial), null)
 
   const stripped = stripRowBlock(twice)
@@ -147,7 +146,7 @@ test('managed row round trips, keeps user rows, and never duplicates itself', ()
 })
 
 test('a bundle install patches the row by id instead of inserting a second one', () => {
-  const values = { name: 'file:///C:/x/index.mjs', light: '#4d6bfe', dark: '#7aaaff', enabled: true, desktop: false, ui: true }
+  const values = { name: 'file:///C:/x/index.mjs', light: '#4d6bfe', dark: '#7aaaff', enabled: true, desktop: false }
   const bundle = replaceRowBlock("", { ...values, mode: 'override' })
   assert.match(bundle, /^- id: whale-blue$/m)
   assert.doesNotMatch(bundle, /insert:/, 'the bundle patch already inserts the row')
@@ -167,6 +166,20 @@ test('a bundle install patches the row by id instead of inserting a second one',
   const back = replaceRowBlock(switched, { ...values, mode: 'override' })
   assert.equal((back.match(/- insert:/g) ?? []).length, 0, 'the standalone insert is gone, not duplicated')
   assert.equal(readRowBlock(back).mode, 'override')
+})
+
+test('an empty patch list stays a valid list after the managed block is added', () => {
+  const values = { name: 'file:///C:/x/index.mjs', light: '#4d6bfe', dark: '#7aaaff', enabled: true, desktop: false }
+  // A profile that never patched anything records an empty flow sequence; a
+  // block appended behind it without a separator is not parseable YAML.
+  const next = replaceRowBlock('[]\n', values)
+  assert.doesNotMatch(next, /^\[\]$/m, 'the empty list is dropped, not kept above the block')
+  assert.match(next, /^- insert:$/m)
+  assert.equal(readRowBlock(next).mode, 'insert')
+
+  // An empty file is the same case with nothing to drop.
+  const fromEmpty = replaceRowBlock('', values)
+  assert.match(fromEmpty, /^- insert:$/m)
 })
 
 test('patch file is located from the config, the profile env, or the installed layout', () => {
@@ -207,8 +220,16 @@ test('profile row is installed idempotently and removed cleanly', () => {
     const pkg = join(dir, 'pkg')
     mkdirSync(join(pkg, 'lib'), { recursive: true })
     writeFileSync(join(pkg, 'index.js'), 'export function apply() {}\n')
-    writeFileSync(join(pkg, 'package.json'), '{"name":"dsh-whale-blue","version":"1.1.0"}\n')
-    writeFileSync(join(pkg, 'lib', 'ui.js'), 'console.log("panel")\n')
+    writeFileSync(join(pkg, 'client.js'), 'window.__ModuleLoader__.load({})\n')
+    writeFileSync(
+      join(pkg, 'package.json'),
+      `${JSON.stringify({
+        name: 'dsh-whale-blue',
+        version: '1.1.0',
+        dsh: { client: { platform: 'web', immediately: true, inject: ['@deepseek-ai/dsh-client-ui-plugin-manager'] } },
+      })}\n`,
+    )
+    writeFileSync(join(pkg, 'lib', 'extra.mjs'), 'console.log("panel")\n')
 
     const log = () => {}
     installPluginRow({ dshHome: home, profile, packageDir: pkg, light: '#4d6bfe', dark: '#7aaaff', log })
@@ -221,7 +242,12 @@ test('profile row is installed idempotently and removed cleanly', () => {
     assert.ok(hasPluginRow(home, profile))
     assert.equal(readPluginRow(home, profile).desktop, false)
     assert.ok(readFileSync(join(pluginDir(home, profile), 'index.mjs'), 'utf8').includes('apply'))
-    assert.ok(readFileSync(join(pluginDir(home, profile), 'lib', 'ui.js'), 'utf8').includes('panel'))
+    assert.ok(readFileSync(join(pluginDir(home, profile), 'lib', 'extra.mjs'), 'utf8').includes('panel'))
+    // The browser half is only served when the installed copy keeps declaring it.
+    const installed = JSON.parse(readFileSync(join(pluginDir(home, profile), 'package.json'), 'utf8'))
+    assert.equal(installed.exports['./client'], './client.js')
+    assert.equal(installed.dsh.client.platform, 'web')
+    assert.ok(readFileSync(join(pluginDir(home, profile), 'client.js'), 'utf8').includes('__ModuleLoader__'))
 
     removePluginRow({ dshHome: home, profile, log })
     assert.equal(hasPluginRow(home, profile), false)
